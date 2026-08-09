@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Reglas para Perfil de Usuario
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Reglas para Tabla de Clasificación / Leaderboard Global
+    match /leaderboard/{userId} {
+      allow read: if true; // Todos pueden ver la clasificación global
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Reglas para Historial de Ensayos / Intentos
+    match /attempts/{attemptId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+    }
+    
+    // Reglas para Banco de Preguntas (Lectura pública, escritura por administrador)
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if false; // Solo administradores mediante Firebase Admin SDK
+    }
+  }
+}
