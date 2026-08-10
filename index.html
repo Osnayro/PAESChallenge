@@ -361,18 +361,50 @@
     </div>
 
     <!-- ============================================================ -->
-    <!-- SCRIPTS -->
+    <!-- CONFIGURACIÓN DE FIREBASE (antes de cualquier módulo)       -->
+    <!-- ============================================================ -->
+    <script>
+      window.FIREBASE_CONFIG = {
+        apiKey: "AIzaSyDr9sbQXbQOG7lHlvQTUnv4oynD7a--FqA",
+        authDomain: "paeschallenge-8c275.firebaseapp.com",
+        databaseURL: "https://paeschallenge-8c275-default-rtdb.firebaseio.com",
+        projectId: "paeschallenge-8c275",
+        storageBucket: "paeschallenge-8c275.firebasestorage.app",
+        messagingSenderId: "889709211628",
+        appId: "1:889709211628:web:468e45808a01c147da5ac9",
+        measurementId: "G-D5SM57FB1M"
+      };
+    </script>
+
+    <!-- ============================================================ -->
+    <!-- BANCOS DE PREGUNTAS LOCALES (scripts normales)              -->
     <!-- ============================================================ -->
     <script src="banco-lectora.js"></script>
     <script src="banco-matematica1.js"></script>
     <script src="banco-matematica2.js"></script>
     <script src="banco-ciencias.js"></script>
-    <!-- Firebase v11 Init & Seed Utility -->
-    <script type="module" src="firebase-init.js"></script>
-    <script type="module" src="seed-firestore.js"></script>
-    <script src="app.js"></script>
 
-    <!-- Service Worker (PWA) -->
+    <!-- ============================================================ -->
+    <!-- MÓDULOS DE FIREBASE (orden importante)                      -->
+    <!-- ============================================================ -->
+    <script type="module" src="firebase-init.js"></script>
+    <!-- Quitar seed-firestore.js en producción -->
+    <!-- <script type="module" src="seed-firestore.js"></script> -->
+
+    <!-- ============================================================ -->
+    <!-- APP PRINCIPAL (módulo)                                      -->
+    <!-- ============================================================ -->
+    <script type="module" src="app.js"></script>
+
+    <!-- ============================================================ -->
+    <!-- EFECTOS Y BÚHO (scripts normales, después de app.js)        -->
+    <!-- ============================================================ -->
+    <script src="buho-svg.js"></script>
+    <script src="effects.js"></script>
+
+    <!-- ============================================================ -->
+    <!-- SERVICE WORKER (PWA)                                        -->
+    <!-- ============================================================ -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
