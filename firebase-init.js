@@ -1,12 +1,11 @@
-
 /**
  * ============================================================
- * PAES Challenge — Firebase v12.17.1 Integration Module
+ * PAES Challenge — Firebase v11 Integration Module
  * Auth + Firestore Real-Time Sync + Protected Answer Validation
  * ============================================================
  */
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.0/firebase-app.js";
 import { 
     getAuth, 
     signInWithEmailAndPassword, 
@@ -16,9 +15,10 @@ import {
     GoogleAuthProvider, 
     signInWithPopup,
     updateProfile
-} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+} from "https://www.gstatic.com/firebasejs/11.3.0/firebase-auth.js";
 import { 
     initializeFirestore,
+    getFirestore,
     persistentLocalCache,
     persistentMultipleTabManager,
     doc, 
@@ -34,13 +34,18 @@ import {
     onSnapshot, 
     addDoc,
     serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/11.3.0/firebase-firestore.js";
 
-// ⚠️ La configuración DEBE estar definida en window.FIREBASE_CONFIG antes de cargar este módulo
-const firebaseConfig = window.FIREBASE_CONFIG;
-if (!firebaseConfig) {
-    console.error("❌ window.FIREBASE_CONFIG no está definido. Firebase no se inicializará.");
-}
+const defaultConfig = {
+    apiKey: "AIzaSyDr9sbQXbQOG7lHlvQTUnv4oynD7a--FqA",
+    authDomain: "paeschallenge-8c275.firebaseapp.com",
+    projectId: "paeschallenge-8c275",
+    storageBucket: "paeschallenge-8c275.firebasestorage.app",
+    messagingSenderId: "889709211628",
+    appId: "1:889709211628:web:468e45808a01c147da5ac9"
+};
+
+const firebaseConfig = window.FIREBASE_CONFIG || defaultConfig;
 
 let app, auth, db;
 let firestoreInitialized = false;
@@ -63,7 +68,7 @@ try {
         db = getFirestore(app);
     }
     firestoreInitialized = true;
-    console.log("🦉 Firebase v12.17.1 e Integración de Seguridad inicializados correctamente.");
+    console.log("🦉 Firebase v11 e Integración de Seguridad inicializados correctamente.");
 } catch (err) {
     console.error("⚠️ Error inicializando Firebase:", err);
 }
