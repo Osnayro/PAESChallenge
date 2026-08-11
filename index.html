@@ -41,51 +41,17 @@
     </div>
 
     <!-- ============================================================ -->
-    <!-- PANTALLA DE AUTENTICACIÓN / ACCESO FIREBASE -->
+    <!-- PANTALLA DE REGISTRO INICIAL (solo la primera vez) -->
     <!-- ============================================================ -->
     <div id="lock-screen">
         <div class="lock-card">
             <img src="buho.PNG" alt="Sabiondo" class="lock-buho-img" onerror="this.style.display='none';">
             <h1 class="lock-title">PAES Challenge</h1>
-            <p class="lock-subtitle">Desafío de Admisión Universitaria 2025-2026</p>
-            
-            <!-- Pestañas de Login / Registro -->
-            <div class="auth-tabs">
-                <button id="auth-tab-login" class="auth-tab active" onclick="switchAuthTab('login')">Ingresar</button>
-                <button id="auth-tab-register" class="auth-tab" onclick="switchAuthTab('register')">Registrarse</button>
-            </div>
-
-            <!-- Formulario Iniciar Sesión -->
-            <div id="auth-form-login" class="auth-form">
-                <input type="email" id="login-email-input" class="lock-input" placeholder="Correo electrónico" autocomplete="email">
-                <input type="password" id="login-password-input" class="lock-input" placeholder="Contraseña" autocomplete="current-password">
-                <button id="login-submit-btn" class="main-btn pulse-ready" onclick="ejecutarLoginFirebase()">Entrar 🔑</button>
-            </div>
-
-            <!-- Formulario Registrarse -->
-            <div id="auth-form-register" class="auth-form" style="display:none;">
-                <input type="text" id="reg-name-input" class="lock-input" placeholder="Tu Nombre Completo" maxlength="30" autocomplete="name">
-                <input type="text" id="reg-colegio-input" class="lock-input" placeholder="Tu Colegio / Liceo" maxlength="40">
-                <input type="number" id="reg-meta-input" class="lock-input" placeholder="Meta Puntaje PAES (ej: 850)" min="100" max="1000">
-                <input type="email" id="reg-email-input" class="lock-input" placeholder="Correo electrónico" autocomplete="email">
-                <input type="password" id="reg-password-input" class="lock-input" placeholder="Crear Contraseña (min 6 caracteres)" autocomplete="new-password">
-                <button id="reg-submit-btn" class="main-btn pulse-ready" onclick="ejecutarRegistroFirebase()">Crear Cuenta 🚀</button>
-            </div>
-
-            <div class="auth-divider"><span>O CONTINÚA CON</span></div>
-
-            <!-- Botón Google Sign In -->
-            <button class="google-btn" onclick="ejecutarGoogleSignIn()">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-                <span>Continuar con Google</span>
-            </button>
-
-            <!-- Acceso Invitado / Offline -->
-            <button class="guest-btn" onclick="ejecutarIngresoInvitado()">
-                <span>Continuar como Invitado / Offline 🦉</span>
-            </button>
-
+            <p class="lock-subtitle">Ingresa tu nombre y la clave de acceso para comenzar</p>
+            <input type="text" id="lock-name-input" class="lock-input" placeholder="Tu nombre" maxlength="20" autocomplete="off">
+            <input type="password" id="lock-password-input" class="lock-input" placeholder="Clave de acceso" maxlength="30" autocomplete="off">
             <div id="lock-error" class="lock-error" style="display:none;"></div>
+            <button id="lock-submit-btn" class="main-btn pulse-ready" onclick="intentarIngresoInicial()">Ingresar 🔑</button>
         </div>
     </div>
 
@@ -97,11 +63,6 @@
         <div class="app-header">
             <img src="buho.PNG" alt="Sabiondo" class="school-logo" onerror="this.classList.add('logo-placeholder'); this.alt='🦉 PAES Challenge';">
             <div class="logo-placeholder" style="display:none;">🦉 PAES Challenge 2025-2026</div>
-            <div id="user-profile-bar" class="user-profile-bar" style="display:none;">
-                <span id="user-display-name" class="user-name">👤 Estudiante</span>
-                <span id="user-colegio-tag" class="user-colegio">🏫 Colegio</span>
-                <button class="logout-btn" onclick="ejecutarCerrarSesion()" title="Cerrar sesión">🚪</button>
-            </div>
         </div>
 
         <!-- Barra de Estado -->
@@ -361,50 +322,17 @@
     </div>
 
     <!-- ============================================================ -->
-    <!-- CONFIGURACIÓN DE FIREBASE (antes de cualquier módulo)       -->
-    <!-- ============================================================ -->
-    <script>
-      window.FIREBASE_CONFIG = {
-        apiKey: "AIzaSyDr9sbQXbQOG7lHlvQTUnv4oynD7a--FqA",
-        authDomain: "paeschallenge-8c275.firebaseapp.com",
-        databaseURL: "https://paeschallenge-8c275-default-rtdb.firebaseio.com",
-        projectId: "paeschallenge-8c275",
-        storageBucket: "paeschallenge-8c275.firebasestorage.app",
-        messagingSenderId: "889709211628",
-        appId: "1:889709211628:web:468e45808a01c147da5ac9",
-        measurementId: "G-D5SM57FB1M"
-      };
-    </script>
-
-    <!-- ============================================================ -->
-    <!-- BANCOS DE PREGUNTAS LOCALES (scripts normales)              -->
+    <!-- SCRIPTS -->
     <!-- ============================================================ -->
     <script src="banco-lectora.js"></script>
     <script src="banco-matematica1.js"></script>
     <script src="banco-matematica2.js"></script>
     <script src="banco-ciencias.js"></script>
-
-    <!-- ============================================================ -->
-    <!-- MÓDULOS DE FIREBASE (orden importante)                      -->
-    <!-- ============================================================ -->
-    <script type="module" src="firebase-init.js"></script>
-    <!-- Quitar seed-firestore.js en producción -->
-    <!-- <script type="module" src="seed-firestore.js"></script> -->
-
-    <!-- ============================================================ -->
-    <!-- APP PRINCIPAL (módulo)                                      -->
-    <!-- ============================================================ -->
-    <script type="module" src="app.js"></script>
-
-    <!-- ============================================================ -->
-    <!-- EFECTOS Y BÚHO (scripts normales, después de app.js)        -->
-    <!-- ============================================================ -->
     <script src="buho-svg.js"></script>
     <script src="effects.js"></script>
+    <script src="app.js"></script>
 
-    <!-- ============================================================ -->
-    <!-- SERVICE WORKER (PWA)                                        -->
-    <!-- ============================================================ -->
+    <!-- Service Worker (PWA) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
