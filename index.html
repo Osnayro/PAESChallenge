@@ -41,15 +41,15 @@
     </div>
 
     <!-- ============================================================ -->
-    <!-- PANTALLA DE REGISTRO INICIAL (solo la primera vez) -->
+    <!-- PANTALLA DE AUTENTICACIÓN (NOMBRE + PIN) -->
     <!-- ============================================================ -->
     <div id="lock-screen">
         <div class="lock-card">
             <img src="buho.PNG" alt="Sabiondo" class="lock-buho-img" onerror="this.style.display='none';">
             <h1 class="lock-title">PAES Challenge</h1>
-            <p class="lock-subtitle">Ingresa tu nombre y la clave de acceso para comenzar</p>
-            <input type="text" id="lock-name-input" class="lock-input" placeholder="Tu nombre" maxlength="20" autocomplete="off">
-            <input type="password" id="lock-password-input" class="lock-input" placeholder="Clave de acceso" maxlength="30" autocomplete="off">
+            <p class="lock-subtitle">Ingresa tu nombre y PIN para comenzar</p>
+            <input type="text" id="lock-name-input" class="lock-input" placeholder="Tu nombre" maxlength="30" autocomplete="off">
+            <input type="password" id="lock-pin-input" class="lock-input" placeholder="PIN de acceso" maxlength="30" autocomplete="off">
             <div id="lock-error" class="lock-error" style="display:none;"></div>
             <button id="lock-submit-btn" class="main-btn pulse-ready" onclick="intentarIngresoInicial()">Ingresar 🔑</button>
         </div>
@@ -73,14 +73,10 @@
             <div class="score-badge" id="score-badge">⭐ 0 pts</div>
             <div class="streak-display" id="streak-display">🔥 0</div>
             <div class="timer-display" id="timer-display">⏱️ 60s</div>
-            <div class="level-display" id="level-display" style="background: #8B5CF6; color: white; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 0.75rem;">📖 Competencia Lectora</div>
         </div>
 
-        <!-- Power-ups Bar -->
+        <!-- Power-ups Bar (sin 50/50) -->
         <div class="powerups-bar" id="powerups-bar">
-            <button class="powerup-btn" id="powerup-fifty" title="50/50: Elimina dos opciones incorrectas">
-                ✂️ 50/50 <small>(3)</small>
-            </button>
             <button class="powerup-btn" id="powerup-time" title="Tiempo extra: +15 segundos">
                 ⏳ +Tiempo <small>(2)</small>
             </button>
@@ -93,7 +89,7 @@
         </div>
 
         <!-- ============================================================ -->
-        <!-- PANTALLA DE BIENVENIDA -->
+        <!-- PANTALLA DE BIENVENIDA / SELECCIÓN DE MATERIA -->
         <!-- ============================================================ -->
         <div class="screen active" id="screen-welcome">
             <div class="character-box">
@@ -104,19 +100,19 @@
             </div>
             
             <h2 class="welcome-title">¿Estás listo para la prueba de admisión?</h2>
-            <p class="welcome-sub">Demuestra tus conocimientos en los 4 niveles del desafío</p>
+            <p class="welcome-sub">Elige una materia para comenzar tu desafío</p>
 
-            <!-- Selector de Partidas -->
+            <!-- Selector de Materias -->
             <div id="lote-selector" style="width:100%;"></div>
             <div id="lote-confirmacion" style="display:none; width:100%; margin:8px 0; padding:10px; background:#F0FDF4; border-radius:12px; text-align:center; font-size:0.9rem; color:#166534;"></div>
 
-            <!-- Info de niveles -->
+            <!-- Info de materias -->
             <div class="info-card">
-                <strong>🎯 Niveles del desafío PAES:</strong><br>
-                🟣 <b>Nivel 1:</b> Competencia Lectora (60s) — 25 preguntas<br>
-                🔵 <b>Nivel 2:</b> Matemática 1 - M1 (45s) — 25 preguntas<br>
-                🟢 <b>Nivel 3:</b> Matemática 2 - M2 (35s) — 25 preguntas<br>
-                🔴 <b>Nivel 4:</b> Ciencias (40s) — 25 preguntas
+                <strong>🎯 Materias disponibles:</strong><br>
+                📖 <b>Competencia Lectora</b> (60s) <br>
+                📐 <b>Matemática 1 - M1</b> (45s) <br>
+                📊 <b>Matemática 2 - M2</b> (35s) <br>
+                🔬 <b>Ciencias</b> (40s)
             </div>
 
             <div class="info-card" style="border-left-color: #8B5CF6; background: #F5F3FF;">
@@ -141,6 +137,7 @@
                 </div>
             </div>
 
+            <!-- Botón start oculto -->
             <button class="main-btn pulse-ready" id="btn-start" style="display:none;" onclick="startGame()">
                 ¡Comenzar Desafío PAES! 🚀
             </button>
@@ -165,7 +162,7 @@
                 <div class="character-speech" id="question-speech">¡Analiza con sabiduría! 🦉</div>
             </div>
             
-            <!-- Panel de Lectura (Nivel 1) -->
+            <!-- Panel de Lectura -->
             <div id="lectura-container" style="display:none; width:100%; max-height:200px; overflow-y:auto; margin-bottom:10px;"></div>
             
             <div class="question-text" id="question-text"></div>
@@ -184,29 +181,6 @@
         </div>
 
         <!-- ============================================================ -->
-        <!-- PANTALLA DE TRANSICIÓN ENTRE NIVELES -->
-        <!-- ============================================================ -->
-        <div class="screen" id="screen-level-transition">
-            <div class="character-box">
-                <div class="buho-svg-container"></div>
-                <div class="character-speech" id="transition-speech">¡Sabiondo está orgulloso! 🦉</div>
-            </div>
-            <h2 class="welcome-title" id="transition-title">Nivel Completado</h2>
-            <div class="share-card">
-                <div class="share-label">Puntuación del nivel</div>
-                <div class="share-score" id="level-score-display">0</div>
-                <div class="share-label">puntos</div>
-                <div id="level-stars"></div>
-            </div>
-            <div class="info-card" style="text-align: center; border-left-color: #8B5CF6; background: #F5F3FF;">
-                🦉 <b>Sabiondo dice:</b> La práctica constante es la clave del éxito en la PAES. ¡Cada nivel superado te acerca más a tu meta universitaria!
-            </div>
-            <button class="main-btn pulse-ready" id="btn-next-level" onclick="goToNextLevel()">
-                Siguiente Nivel ➡️
-            </button>
-        </div>
-
-        <!-- ============================================================ -->
         <!-- PANTALLA DE RESULTADOS FINAL -->
         <!-- ============================================================ -->
         <div class="screen" id="screen-results">
@@ -214,7 +188,7 @@
                 <div class="buho-svg-container"></div>
                 <div class="character-speech" id="result-character-speech">¡Gran trabajo! 🦉🎓</div>
             </div>
-            <h2 class="welcome-title">🎉 ¡Desafío PAES Completado!</h2>
+            <h2 class="welcome-title">🎉 ¡Desafío Completado!</h2>
             <div class="share-card" id="share-card">
                 <div class="share-label">Tu puntuación final</div>
                 <div class="share-score" id="final-score">0</div>
@@ -230,11 +204,10 @@
                 <div id="topic-analysis"></div>
             </div>
             <div class="btn-group">
-                <button class="main-btn" onclick="goToFinalScreen()">Ver Mensaje Final 📜</button>
                 <button class="main-btn secondary" onclick="shareResults()">Compartir 📤</button>
             </div>
             <button class="main-btn secondary" onclick="showScreen('screen-leaderboard')">Ver Clasificación 🏆</button>
-            <button class="main-btn danger" onclick="restartGame()">Volver al Inicio 🏠</button>
+            <button class="main-btn danger" onclick="volverAlInicio()">Volver al Inicio 🏠</button>
         </div>
 
         <!-- ============================================================ -->
@@ -255,16 +228,15 @@
             </div>
             <div class="info-card" style="border-left-color: #8B5CF6; background: #F5F3FF;">
                 📊 <b>Temario cubierto:</b><br>
-                • Competencia Lectora — 100 preguntas<br>
-                • Matemática 1 (M1) — 100 preguntas<br>
-                • Matemática 2 (M2) — 100 preguntas<br>
-                • Ciencias — 79 preguntas<br>
-                • Total: 379 preguntas alineadas al DEMRE
+                • Competencia Lectora<br>
+                • Matemática 1 (M1)<br>
+                • Matemática 2 (M2)<br>
+                • Ciencias
             </div>
             <p style="font-size: 0.9rem; font-weight: 700; color: var(--azul-oscuro); margin: 6px 0; text-align: center;">
                 "Tu futuro comienza con una buena preparación" 🦉
             </p>
-            <button class="main-btn" onclick="restartGame()">🔄 Volver a Jugar</button>
+            <button class="main-btn" onclick="volverAlInicio()">🔄 Volver a Jugar</button>
             <div class="credits">
                 ✨ Desarrollado por <b>Romeroweb</b>
             </div>
@@ -324,12 +296,17 @@
     <!-- ============================================================ -->
     <!-- SCRIPTS -->
     <!-- ============================================================ -->
+    <!-- Bancos de preguntas locales -->
     <script src="banco-lectora.js"></script>
     <script src="banco-matematica1.js"></script>
     <script src="banco-matematica2.js"></script>
     <script src="banco-ciencias.js"></script>
+
+    <!-- Efectos y búho -->
     <script src="buho-svg.js"></script>
     <script src="effects.js"></script>
+
+    <!-- Aplicación principal -->
     <script src="app.js"></script>
 
     <!-- Service Worker (PWA) -->
