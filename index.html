@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PAES Challenge</title>
+    
+    <!-- Fuentes y PWA -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1E3A63">
@@ -11,6 +13,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="PAES Challenge">
     <link rel="apple-touch-icon" href="icono-app.PNG">
+    
+    <!-- Renderizado Matemático (KaTeX) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+
+    <!-- Estilos Principales -->
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -26,7 +34,7 @@
             <div class="splash-loader-bottom">
                 <div class="splash-loader-bar"><div class="splash-loader-fill" id="loader-fill"></div></div>
                 <span class="splash-loader-label" id="loader-label">Preparando tu desafío...</span>
-                <button class="splash-start-btn" id="skip-splash-btn" style="display: none;" disabled>
+                <button type="button" class="splash-start-btn" id="skip-splash-btn" style="display: none;" disabled>
                     <span class="splash-btn-text">¡Comenzar!</span>
                     <span class="splash-btn-icon">🚀</span>
                 </button>
@@ -37,11 +45,11 @@
     <!-- PANTALLA DE BLOQUEO QR -->
     <div id="qr-lock-screen" style="display:none; position:fixed; inset:0; background:#1E3A63; z-index:2000; align-items:center; justify-content:center; text-align:center; color:white; padding:20px;">
         <div class="lock-card">
-            <img src="buho.PNG" alt="Sabiondo" style="width:80px; border-radius:50%; margin-bottom: 12px;">
+            <img src="buho.PNG" alt="Sabiondo" style="width:80px; border-radius:50%; margin-bottom: 12px;" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><circle cx=\'50\' cy=\'50\' r=\'45\' fill=\'%231E3A63\'/><text x=\'50%\' y=\'55%\' text-anchor=\'middle\' fill=\'white\' font-size=\'40\'>🦉</text></svg>';">
             <h1 style="font-size:1.4rem; margin:10px 0;">Acceso restringido</h1>
             <p style="margin-bottom:20px; font-size:0.9rem;">Debes escanear el código QR autorizado para ingresar.</p>
             <div id="qr-error" style="display:none; background:#FEF2F2; color:#DC2626; border-left:3px solid #EF4444; padding:8px 12px; border-radius:8px; margin-bottom:12px; text-align: left; font-size: 0.85rem;"></div>
-            <button class="main-btn" onclick="window.location.reload()">Intentar de nuevo 🔄</button>
+            <button type="button" class="main-btn" onclick="window.location.reload()">Intentar de nuevo 🔄</button>
         </div>
     </div>
 
@@ -54,7 +62,7 @@
             <input type="text" id="lock-name-input" class="lock-input" placeholder="Tu nombre" maxlength="30" autocomplete="off">
             <input type="password" id="lock-pin-input" class="lock-input" placeholder="PIN de acceso" maxlength="30" autocomplete="off">
             <div id="lock-error" class="lock-error" style="display:none;"></div>
-            <button id="lock-submit-btn" class="main-btn pulse-ready" onclick="intentarIngresoInicial()">Ingresar 🔑</button>
+            <button type="button" id="lock-submit-btn" class="main-btn pulse-ready" onclick="intentarIngresoInicial()">Ingresar 🔑</button>
         </div>
     </div>
 
@@ -74,11 +82,11 @@
             <div class="timer-display" id="timer-display" style="display:none;">⏱️ 60s</div>
         </div>
 
-        <!-- Power-ups (Sin 50/50) -->
+        <!-- Power-ups -->
         <div class="powerups-bar" id="powerups-bar">
-            <button class="powerup-btn" id="powerup-time" title="Tiempo extra: +15 segundos">⏳ +Tiempo <small>(2)</small></button>
-            <button class="powerup-btn" id="powerup-freeze" title="Congelar tiempo: Detiene el reloj 10s">❄️ Congelar <small>(1)</small></button>
-            <button class="powerup-btn" id="powerup-hint" title="Pista: Muestra una ayuda sin revelar la respuesta">💡 Pista <small>(2)</small></button>
+            <button type="button" class="powerup-btn" id="powerup-time" title="Tiempo extra: +15 segundos">⏳ +Tiempo <small>(2)</small></button>
+            <button type="button" class="powerup-btn" id="powerup-freeze" title="Congelar tiempo: Detiene el reloj 10s">❄️ Congelar <small>(1)</small></button>
+            <button type="button" class="powerup-btn" id="powerup-hint" title="Pista: Muestra una ayuda sin revelar la respuesta">💡 Pista <small>(2)</small></button>
         </div>
 
         <!-- PANTALLA BIENVENIDA / SELECCIÓN -->
@@ -108,11 +116,11 @@
                 </div>
             </div>
 
-            <button class="main-btn pulse-ready" id="btn-start" style="display:none;" onclick="startGame()">¡Comenzar Desafío PAES! 🚀</button>
+            <button type="button" class="main-btn pulse-ready" id="btn-start" style="display:none;" onclick="startGame()">¡Comenzar Desafío PAES! 🚀</button>
             
             <div class="btn-group" style="margin-top: 15px;">
-                <button class="main-btn secondary" onclick="showScreen('screen-badges')">Ver Insignias 🏅</button>
-                <button class="main-btn secondary" onclick="showScreen('screen-leaderboard')">Clasificación 🏆</button>
+                <button type="button" class="main-btn secondary" onclick="showScreen('screen-badges')">Ver Insignias 🏅</button>
+                <button type="button" class="main-btn secondary" onclick="showScreen('screen-leaderboard')">Clasificación 🏆</button>
             </div>
             <p class="credits">Desarrollado por Romeroweb</p>
         </div>
@@ -138,8 +146,8 @@
             
             <div class="feedback-box" id="feedback-box"></div>
             
-            <button class="main-btn" id="btn-next" style="display:none;" onclick="nextQuestion()">Siguiente Pregunta ➡️</button>
-            <button class="main-btn danger" id="btn-exit" onclick="confirmarSalir()" style="margin-top:10px; font-size:0.8rem; background:transparent; color:#EF4444; border:1px solid #FCA5A5;">🚪 Salir y volver al inicio</button>
+            <button type="button" class="main-btn" id="btn-next" style="display:none;" onclick="nextQuestion()">Siguiente Pregunta ➡️</button>
+            <button type="button" class="main-btn danger" id="btn-exit" onclick="confirmarSalir()" style="margin-top:10px; font-size:0.8rem; background:transparent; color:#EF4444; border:1px solid #FCA5A5;">🚪 Salir y volver al inicio</button>
         </div>
 
         <!-- PANTALLA RESULTADOS -->
@@ -165,17 +173,17 @@
             </div>
 
             <div class="btn-group" style="margin-top: 15px;">
-                <button class="main-btn secondary" onclick="shareResults()">Compartir 📤</button>
+                <button type="button" class="main-btn secondary" onclick="shareResults()">Compartir 📤</button>
             </div>
-            <button class="main-btn secondary" onclick="showScreen('screen-leaderboard')" style="margin-top:8px;">Ver Clasificación 🏆</button>
-            <button class="main-btn danger" onclick="volverAlInicio()" style="margin-top:8px;">Volver al Inicio 🏠</button>
+            <button type="button" class="main-btn secondary" onclick="showScreen('screen-leaderboard')" style="margin-top:8px;">Ver Clasificación 🏆</button>
+            <button type="button" class="main-btn danger" onclick="volverAlInicio()" style="margin-top:8px;">Volver al Inicio 🏠</button>
         </div>
 
         <!-- PANTALLA INSIGNIAS -->
         <div class="screen" id="screen-badges">
             <h2 class="welcome-title">🏅 Tus Insignias</h2>
             <div class="badges-grid" id="badges-grid"></div>
-            <button class="main-btn" onclick="showScreen('screen-welcome')" style="margin-top:20px;">Volver 🏠</button>
+            <button type="button" class="main-btn" onclick="showScreen('screen-welcome')" style="margin-top:20px;">Volver 🏠</button>
         </div>
 
         <!-- PANTALLA CLASIFICACIÓN -->
@@ -192,7 +200,7 @@
                 </thead>
                 <tbody id="leaderboard-body"></tbody>
             </table>
-            <button class="main-btn" onclick="showScreen('screen-welcome')" style="margin-top:20px;">Volver 🏠</button>
+            <button type="button" class="main-btn" onclick="showScreen('screen-welcome')" style="margin-top:20px;">Volver 🏠</button>
         </div>
     </div>
 
@@ -203,8 +211,8 @@
             <strong>Instala PAES Challenge</strong>
             <span>Accede más rápido, incluso sin conexión</span>
         </div>
-        <button class="install-banner-btn" id="install-android-btn" onclick="instalarPWAAndroid()">Instalar</button>
-        <button class="install-banner-close" onclick="cerrarBannerInstalacion('android')">✕</button>
+        <button type="button" class="install-banner-btn" id="install-android-btn" onclick="instalarPWAAndroid()">Instalar</button>
+        <button type="button" class="install-banner-close" onclick="cerrarBannerInstalacion('android')" aria-label="Cerrar banner de instalación">✕</button>
     </div>
 
     <div id="install-banner-ios" class="install-banner install-banner-ios" style="display:none;">
@@ -213,17 +221,17 @@
             <strong>Instala PAES Challenge en tu iPhone</strong>
             <span>Toca <b>Compartir</b> <span class="ios-share-icon">⬆️</span> y luego <b>"Agregar a inicio"</b></span>
         </div>
-        <button class="install-banner-close" onclick="cerrarBannerInstalacion('ios')">✕</button>
+        <button type="button" class="install-banner-close" onclick="cerrarBannerInstalacion('ios')" aria-label="Cerrar banner de instalación">✕</button>
     </div>
 
-    <!-- CARGA DE ARCHIVOS Y BANCOS DE PREGUNTAS -->
-    <script src="banco-lectora.js"></script>
-    <script src="banco-matematica1.js"></script>
-    <script src="banco-matematica2.js"></script>
-    <script src="banco-ciencias.js"></script>
-    <script src="buho-svg.js"></script>
-    <script src="effects.js"></script>
-    <script src="app.js"></script>
+    <!-- CARGA DE ARCHIVOS Y BANCOS DE PREGUNTAS (Carga Diferida) -->
+    <script defer src="banco-lectora.js"></script>
+    <script defer src="banco-matematica1.js"></script>
+    <script defer src="banco-matematica2.js"></script>
+    <script defer src="banco-ciencias.js"></script>
+    <script defer src="buho-svg.js"></script>
+    <script defer src="effects.js"></script>
+    <script defer src="app.js"></script>
 
     <!-- Registro del Service Worker para soporte PWA Offline -->
     <script>
