@@ -1,16 +1,16 @@
 
 /**
  * ============================================================
- * PAES Challenge Engine v5.1.0 — Híbrido (Local + Google Sheets)
- * Autenticación con Google Apps Script
- * Preguntas desde archivos JS locales
- * Leaderboard y registro de puntajes en Google Sheets
+ * PAES Challenge Engine v5.2.0 — Token QR + Google Sheets
+ * Autenticación por token de un solo uso + Nombre/PIN
+ * Preguntas locales + Leaderboard en Google Sheets
  * SIN 50/50
  * ============================================================
  */
 
 // ===== CONFIGURACIÓN DEL BACKEND =====
-const API_URL = 'https://script.google.com/macros/s/AKfycbximvixDYBXdOQ8-AuFszIDeEwEibOTVZbQdhKaRPHSdWiu-G01-piCewwY8g7I4-HcBA/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzAeYMWNPk_YCETYU1BaPdnrhOKkDieKOC9kpsuZ0CT98TKN7d4qR1sD57I_zA39MZA/exec';
+const TOKEN_STORAGE_KEY = 'paes_token_qr';
 
 // ===== ESTADO GLOBAL =====
 const state = {
@@ -100,8 +100,60 @@ document.addEventListener('DOMContentLoaded', () => {
     limpiarResaltadosAntiguos();
     setupPantallaRegistro();
     setupInstalacionPWA();
-    mostrarPantallaInicial();
+    verificarAccesoQR();
 });
+
+// ===== CONTROL DE ACCESO QR =====
+async function verificarAccesoQR() {
+    const tokenGuardado = safeLocalGet(TOKEN_STORAGE_KEY, null);
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenURL = urlParams.get('token');
+
+    if (tokenGuardado) {
+        mostrarPantallaInicial();
+        return;
+    }
+
+    if (tokenURL) {
+        const valido = await validarTokenQR(tokenURL);
+        if (valido) {
+            safeLocalSet(TOKEN_STORAGE_KEY, tokenURL);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            mostrarPantallaInicial();
+        } else {
+            mostrarPantallaBloqueoQR('Token inválido o ya utilizado.');
+        }
+    } else {
+        mostrarPantallaBloqueoQR();
+    }
+}
+
+async function validarTokenQR(token) {
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'validar_token_qr', token: token })
+        });
+        const data = await response.json();
+        return data.success === true;
+    } catch (err) {
+        console.error('Error validando token QR:', err);
+        return false;
+    }
+}
+
+function mostrarPantallaBloqueoQR(mensaje = '') {
+    const qrScreen = document.getElementById('qr-lock-screen');
+    if (!qrScreen) return;
+    qrScreen.style.display = 'flex';
+    document.getElementById('lock-screen').style.display = 'none';
+    const errorBox = document.getElementById('qr-error');
+    if (errorBox && mensaje) {
+        errorBox.textContent = mensaje;
+        errorBox.style.display = 'block';
+    }
+}
 
 // ===== PANTALLA INICIAL =====
 function mostrarPantallaInicial() {
@@ -116,7 +168,7 @@ function mostrarPantallaInicial() {
     }
 }
 
-// ===== AUTENTICACIÓN =====
+// ===== AUTENTICACIÓN (NOMBRE + PIN) =====
 function setupPantallaRegistro() {
     const nameInput = document.getElementById('lock-name-input');
     const pinInput = document.getElementById('lock-pin-input');
@@ -130,6 +182,7 @@ function mostrarPantallaRegistro() {
     const lock = document.getElementById('lock-screen');
     if (lock) {
         lock.style.display = 'flex';
+        document.getElementById('qr-lock-screen').style.display = 'none';
         setTimeout(() => document.getElementById('lock-name-input')?.focus(), 300);
     }
 }
@@ -277,7 +330,6 @@ function loadQuestion() {
     const bn = document.getElementById('btn-next'); if (bn) bn.style.display = 'none';
     const qi = document.getElementById('question-image'); if (qi) qi.style.display = 'none';
 
-    // Mostrar lectura si corresponde
     const lecturaContainer = document.getElementById('lectura-container');
     if (q.textKey && typeof paesTexts !== 'undefined' && paesTexts[q.textKey]) {
         const texto = paesTexts[q.textKey];
@@ -327,6 +379,7 @@ function loadQuestion() {
     updateProgress();
 }
 
+// ===== FUNCIONES DE PREGUNTAS =====
 function loadMultipleChoice(q) {
     const grid = document.getElementById('options-grid'); if (!grid) return;
     grid.style.display = 'flex';
@@ -343,7 +396,6 @@ function loadMultipleChoice(q) {
         grid.appendChild(btn);
     });
 }
-
 function loadMatching(q) {
     const mc = document.getElementById('matching-container'); if (!mc) return;
     mc.style.display = 'grid';
@@ -352,42 +404,28 @@ function loadMatching(q) {
     const rightItems = shuffleArray(pairs.map(p => ({ id: p.id, text: p.right })));
     let sel = null;
     const matches = {};
-
     leftItems.forEach(item => {
         const d = document.createElement('div');
-        d.className = 'matching-item';
-        d.textContent = item.text;
-        d.dataset.pairId = item.id;
-        d.dataset.side = 'left';
+        d.className = 'matching-item'; d.textContent = item.text; d.dataset.pairId = item.id; d.dataset.side = 'left';
         d.addEventListener('click', function(){
             if (this.classList.contains('matched')) return;
             mc.querySelectorAll('.matching-item[data-side="left"]').forEach(el => { if (!el.classList.contains('matched')) el.classList.remove('selected'); });
-            this.classList.add('selected');
-            sel = this;
+            this.classList.add('selected'); sel = this;
         });
         mc.appendChild(d);
     });
     rightItems.forEach(item => {
         const d = document.createElement('div');
-        d.className = 'matching-item';
-        d.textContent = item.text;
-        d.dataset.pairId = item.id;
-        d.dataset.side = 'right';
+        d.className = 'matching-item'; d.textContent = item.text; d.dataset.pairId = item.id; d.dataset.side = 'right';
         d.addEventListener('click', function(){
             if (this.classList.contains('matched')) return;
             if (sel && !this.classList.contains('matched')) {
                 if (sel.dataset.pairId === this.dataset.pairId) {
-                    sel.classList.add('matched');
-                    this.classList.add('matched');
-                    matches[this.dataset.pairId] = true;
-                    sel = null;
-                    if (Object.keys(matches).length === pairs.length) {
-                        evaluarRespuesta(true, q);
-                    }
+                    sel.classList.add('matched'); this.classList.add('matched'); matches[this.dataset.pairId] = true; sel = null;
+                    if (Object.keys(matches).length === pairs.length) evaluarRespuesta(true, q);
                 } else {
                     const le = sel;
-                    le.style.borderColor = 'var(--rojo-alerta)';
-                    this.style.borderColor = 'var(--rojo-alerta)';
+                    le.style.borderColor = 'var(--rojo-alerta)'; this.style.borderColor = 'var(--rojo-alerta)';
                     setTimeout(() => { le.style.borderColor = '#CBD5E1'; this.style.borderColor = '#CBD5E1'; le.classList.remove('selected'); }, 500);
                     sel = null;
                 }
@@ -396,36 +434,17 @@ function loadMatching(q) {
         mc.appendChild(d);
     });
 }
-
 function loadSlider(q) {
     const sc = document.getElementById('slider-container'); if (!sc) return;
     sc.style.display = 'block';
-    const min = parseFloat(q.min || 0);
-    const max = parseFloat(q.max || 100);
-    const vd = document.createElement('div');
-    vd.className = 'slider-value';
-    vd.textContent = min;
-    vd.id = 'slider-value-display';
-    const tr = document.createElement('div');
-    tr.className = 'slider-track';
-    const fl = document.createElement('div');
-    fl.className = 'slider-fill';
-    fl.style.width = '0%';
-    const inp = document.createElement('input');
-    inp.type = 'range';
-    inp.className = 'slider-input';
-    inp.min = min;
-    inp.max = max;
-    inp.step = '0.1';
-    inp.value = min;
-    inp.addEventListener('input', () => {
-        fl.style.width = `${((inp.value-min)/(max-min))*100}%`;
-        vd.textContent = inp.value;
-    });
+    const min = parseFloat(q.min || 0); const max = parseFloat(q.max || 100);
+    const vd = document.createElement('div'); vd.className = 'slider-value'; vd.textContent = min; vd.id = 'slider-value-display';
+    const tr = document.createElement('div'); tr.className = 'slider-track';
+    const fl = document.createElement('div'); fl.className = 'slider-fill'; fl.style.width = '0%';
+    const inp = document.createElement('input'); inp.type = 'range'; inp.className = 'slider-input'; inp.min = min; inp.max = max; inp.step = '0.1'; inp.value = min;
+    inp.addEventListener('input', () => { fl.style.width = `${((inp.value-min)/(max-min))*100}%`; vd.textContent = inp.value; });
     tr.appendChild(fl); tr.appendChild(inp);
-    const sb = document.createElement('button');
-    sb.className = 'main-btn';
-    sb.textContent = 'Confirmar ✅';
+    const sb = document.createElement('button'); sb.className = 'main-btn'; sb.textContent = 'Confirmar ✅';
     sb.addEventListener('click', () => {
         const userAnswer = parseFloat(inp.value);
         const correct = Math.abs(userAnswer - parseFloat(q.correctAnswer)) <= parseFloat(q.tolerance || 0.5);
@@ -433,43 +452,31 @@ function loadSlider(q) {
     });
     sc.appendChild(vd); sc.appendChild(tr); sc.appendChild(sb);
 }
-
 function loadDrag(q) {
     const dc = document.getElementById('drag-container'); if (!dc) return;
     dc.style.display = 'flex';
     const items = q.items || [];
     items.forEach((item, idx) => {
-        const dz = document.createElement('div');
-        dz.className = 'drop-zone';
-        dz.textContent = `${idx+1}. Soltar aquí`;
-        dz.dataset.index = idx;
+        const dz = document.createElement('div'); dz.className = 'drop-zone'; dz.textContent = `${idx+1}. Soltar aquí`; dz.dataset.index = idx;
         dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
         dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
         dz.addEventListener('drop', e => {
-            e.preventDefault();
-            dz.classList.remove('drag-over');
+            e.preventDefault(); dz.classList.remove('drag-over');
             const itemIndex = e.dataTransfer.getData('text/plain');
-            dz.textContent = `${idx+1}. ${items[itemIndex]}`;
-            dz.dataset.filled = itemIndex;
+            dz.textContent = `${idx+1}. ${items[itemIndex]}`; dz.dataset.filled = itemIndex;
             checkDragComplete(q, items.length);
         });
         dc.appendChild(dz);
     });
-    const ic = document.createElement('div');
-    ic.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px';
+    const ic = document.createElement('div'); ic.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px';
     shuffleArray(items).forEach((item, idx) => {
-        const dg = document.createElement('div');
-        dg.className = 'draggable-item';
-        dg.textContent = item;
-        dg.draggable = true;
-        dg.dataset.originalIndex = idx;
+        const dg = document.createElement('div'); dg.className = 'draggable-item'; dg.textContent = item; dg.draggable = true; dg.dataset.originalIndex = idx;
         dg.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', idx); dg.style.opacity = '0.5'; });
         dg.addEventListener('dragend', () => { dg.style.opacity = '1'; });
         ic.appendChild(dg);
     });
     dc.appendChild(ic);
 }
-
 function checkDragComplete(q, totalItems) {
     const dzs = document.querySelectorAll('.drop-zone');
     let allFilled = true;
@@ -488,16 +495,13 @@ function checkMultipleAnswer(oi, q) {
     const opts = document.querySelectorAll('.option-btn');
     opts.forEach(b => b.disabled = true);
     clearInterval(state.timerInterval); state.timerInterval = null;
-
     const correctIndex = q.correct;
     const isCorrect = parseInt(oi) === parseInt(correctIndex);
     evaluarRespuesta(isCorrect, q);
 }
-
 function evaluarRespuesta(isCorrect, q) {
     const tiempo = (Date.now() - state.questionStartTime) / 1000;
     state.totalPreguntasRespondidas++;
-
     if (isCorrect) {
         let pts = q.points || 100;
         state.streak++;
@@ -508,9 +512,7 @@ function evaluarRespuesta(isCorrect, q) {
             showSpeedBonus(bonus);
         }
         state.score += pts;
-        updateScore();
-        updateStreak();
-        playSound('correct');
+        updateScore(); updateStreak(); playSound('correct');
         if (window.effectsManager) window.effectsManager.triggerConfettiAcademico();
         if (tiempo < 3 && window.effectsManager) window.effectsManager.triggerScreenFlash(180);
         updateBuhoReaction('correct');
@@ -525,35 +527,28 @@ function evaluarRespuesta(isCorrect, q) {
         showFeedback(`¡Correcto! ${q.explanation || ''}`, 'correct');
     } else {
         state.streak = 0;
-        updateStreak();
-        playSound('incorrect');
+        updateStreak(); playSound('incorrect');
         showFeedback(`Incorrecto. ${q.explanation || ''}`, 'incorrect');
         setTimeout(() => updateBuhoReaction('determined'), 400);
     }
-
     if (q.topic) {
         if (!state.topicScores[q.topic]) state.topicScores[q.topic] = { correct: 0, total: 0 };
         state.topicScores[q.topic].total++;
         if (isCorrect) state.topicScores[q.topic].correct++;
     }
-
     if (state.lecturaActiva && q.evidenceText) {
         resaltarEvidenciaEnLectura(state.lecturaActiva, q.evidenceText, isCorrect ? 'correct' : 'incorrect');
     }
-
     const bn = document.getElementById('btn-next');
     if (bn) bn.style.display = 'block';
-
     state.indiceActual++;
     if (state.indiceActual < state.totalPreguntas) {
         state.preguntaActual = state.preguntas[state.indiceActual];
     } else {
         state.preguntaActual = null;
     }
-
     checkBadges();
 }
-
 function nextQuestion() {
     if (window.effectsManager) window.effectsManager.playSound('next');
     clearInterval(state.timerInterval); state.timerInterval = null; state.isFrozen = false;
@@ -628,7 +623,6 @@ function finalizarPartida() {
     showScreen('screen-results');
     if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
     updateBuhoReaction('graduate');
-
     guardarPuntajeEnBackend();
 }
 
@@ -658,9 +652,7 @@ function volverAlInicio() {
     state.preguntaActual = null;
     state.materiaActual = null;
     document.body.className = '';
-    updateScore();
-    updateStreak();
-    updateProgress();
+    updateScore(); updateStreak(); updateProgress();
     mostrarPantallaMaterias();
 }
 
@@ -698,7 +690,6 @@ function setupPowerups() {
         document.getElementById(`powerup-${t}`)?.addEventListener('click', () => usePowerup(t));
     });
 }
-
 function usePowerup(type) {
     if (state.powerups[type] <= 0) return;
     if ((type === 'time' || type === 'freeze') && state.mode !== 'timed') return;
@@ -730,7 +721,6 @@ function usePowerup(type) {
             break;
     }
 }
-
 function updatePowerupButtons() {
     ['time','freeze','hint'].forEach(t => {
         const b = document.getElementById(`powerup-${t}`);
@@ -765,7 +755,6 @@ function startTimer() {
         }
     }, 1000);
 }
-
 function updateTimerDisplay() {
     const td = document.getElementById('timer-display');
     if (td) td.textContent = `⏱️ ${state.timer}s`;
@@ -821,35 +810,23 @@ function selectMode(m) {
 // ===== INSIGNIAS =====
 function checkBadges() {
     if (state.score >= 3000 && !state.badges.paesPro) {
-        state.badges.paesPro = true;
-        playSound('achievement');
+        state.badges.paesPro = true; playSound('achievement');
         if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
-        mostrarToast('¡PAES Pro!', '🏆');
-        saveBadges();
+        mostrarToast('¡PAES Pro!', '🏆'); saveBadges();
     }
     if (state.streak >= 5 && !state.badges.streaker) {
-        state.badges.streaker = true;
-        playSound('achievement');
+        state.badges.streaker = true; playSound('achievement');
         if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
-        mostrarToast('¡Rachador!', '🔥');
-        saveBadges();
+        mostrarToast('¡Rachador!', '🔥'); saveBadges();
     }
     if (state.mode === 'timed' && (Date.now()-state.questionStartTime) < 3000 && !state.badges.speedDemon && state.streak > 0) {
-        state.badges.speedDemon = true;
-        playSound('achievement');
+        state.badges.speedDemon = true; playSound('achievement');
         if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
-        mostrarToast('¡Velocista!', '⚡');
-        saveBadges();
+        mostrarToast('¡Velocista!', '⚡'); saveBadges();
     }
 }
-function getBadgeIcon(b) {
-    const icons = { perfectScore:'💯', speedDemon:'⚡', streaker:'🔥', paesPro:'🏆', noPowerups:'💪' };
-    return icons[b] || '🏅';
-}
-function getBadgeName(b) {
-    const names = { perfectScore:'Puntaje Perfecto', speedDemon:'Velocista', streaker:'Rachador', paesPro:'PAES Pro', noPowerups:'Poder Natural' };
-    return names[b] || b;
-}
+function getBadgeIcon(b) { const icons = { perfectScore:'💯', speedDemon:'⚡', streaker:'🔥', paesPro:'🏆', noPowerups:'💪' }; return icons[b] || '🏅'; }
+function getBadgeName(b) { const names = { perfectScore:'Puntaje Perfecto', speedDemon:'Velocista', streaker:'Rachador', paesPro:'PAES Pro', noPowerups:'Poder Natural' }; return names[b] || b; }
 function loadBadges() {
     const saved = safeLocalGet('paes_badges_v4', null);
     if (saved) { try { state.badges = { ...state.badges, ...JSON.parse(saved) }; } catch(e) {} }
@@ -1063,63 +1040,15 @@ document.addEventListener('keydown', function(e) {
 const INSTALL_DISMISSED_KEY_PREFIX = 'paes_install_dismissed_';
 let _deferredInstallPrompt = null;
 let _splashYaCerrado = false;
-
-function estaEnModoStandalone() {
-    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-           window.navigator.standalone === true;
-}
-function esIOS() {
-    const ua = window.navigator.userAgent || '';
-    return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
+function estaEnModoStandalone() { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; }
+function esIOS() { const ua = window.navigator.userAgent || ''; return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
 function bannerFueDescartado(tipo) { return safeLocalGet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'false') === 'true'; }
-function mostrarBannerInstalacionAndroid() {
-    if (bannerFueDescartado('android') || estaEnModoStandalone()) return;
-    const banner = document.getElementById('install-banner-android');
-    if (banner) banner.style.display = 'flex';
-}
-function mostrarBannerInstalacionIOS() {
-    if (bannerFueDescartado('ios') || estaEnModoStandalone()) return;
-    const banner = document.getElementById('install-banner-ios');
-    if (banner) banner.style.display = 'flex';
-}
-function ocultarBannerInstalacion(tipo) {
-    const banner = document.getElementById(`install-banner-${tipo}`);
-    if (banner) banner.style.display = 'none';
-}
-function cerrarBannerInstalacion(tipo) {
-    ocultarBannerInstalacion(tipo);
-    safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'true');
-}
-function instalarPWAAndroid() {
-    if (!_deferredInstallPrompt) { ocultarBannerInstalacion('android'); return; }
-    _deferredInstallPrompt.prompt();
-    _deferredInstallPrompt.userChoice.then(() => {
-        _deferredInstallPrompt = null;
-        ocultarBannerInstalacion('android');
-    });
-}
-function setupInstalacionPWA() {
-    if (estaEnModoStandalone()) return;
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        _deferredInstallPrompt = e;
-        if (_splashYaCerrado) mostrarBannerInstalacionAndroid();
-    });
-    window.addEventListener('appinstalled', () => {
-        _deferredInstallPrompt = null;
-        ocultarBannerInstalacion('android');
-        safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + 'android', 'true');
-    });
-    document.getElementById('skip-splash-btn')?.addEventListener('click', () => {
-        _splashYaCerrado = true;
-        setTimeout(() => {
-            if (estaEnModoStandalone()) return;
-            if (_deferredInstallPrompt) mostrarBannerInstalacionAndroid();
-            else if (esIOS()) mostrarBannerInstalacionIOS();
-        }, 1500);
-    }, { once: true });
-}
+function mostrarBannerInstalacionAndroid() { if (bannerFueDescartado('android') || estaEnModoStandalone()) return; const banner = document.getElementById('install-banner-android'); if (banner) banner.style.display = 'flex'; }
+function mostrarBannerInstalacionIOS() { if (bannerFueDescartado('ios') || estaEnModoStandalone()) return; const banner = document.getElementById('install-banner-ios'); if (banner) banner.style.display = 'flex'; }
+function ocultarBannerInstalacion(tipo) { const banner = document.getElementById(`install-banner-${tipo}`); if (banner) banner.style.display = 'none'; }
+function cerrarBannerInstalacion(tipo) { ocultarBannerInstalacion(tipo); safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'true'); }
+function instalarPWAAndroid() { if (!_deferredInstallPrompt) { ocultarBannerInstalacion('android'); return; } _deferredInstallPrompt.prompt(); _deferredInstallPrompt.userChoice.then(() => { _deferredInstallPrompt = null; ocultarBannerInstalacion('android'); }); }
+function setupInstalacionPWA() { if (estaEnModoStandalone()) return; window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); _deferredInstallPrompt = e; if (_splashYaCerrado) mostrarBannerInstalacionAndroid(); }); window.addEventListener('appinstalled', () => { _deferredInstallPrompt = null; ocultarBannerInstalacion('android'); safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + 'android', 'true'); }); document.getElementById('skip-splash-btn')?.addEventListener('click', () => { _splashYaCerrado = true; setTimeout(() => { if (estaEnModoStandalone()) return; if (_deferredInstallPrompt) mostrarBannerInstalacionAndroid(); else if (esIOS()) mostrarBannerInstalacionIOS(); }, 1500); }, { once: true }); }
 
 // ===== SABIONDO =====
 function updateBuhoReaction(r) {
@@ -1200,4 +1129,3 @@ function confirmarSalir() {
     };
     document.addEventListener('keydown', escHandler);
 }
- 
