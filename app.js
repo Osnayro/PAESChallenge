@@ -1,4 +1,3 @@
-
 /**
  * ============================================================
  * PAES Challenge Engine v5.2.0 — Token QR + Google Sheets
@@ -717,7 +716,22 @@ function usePowerup(type) {
             }, 10000);
             break;
         case 'hint':
-            showFeedback('💡 Piensa en la opción más lógica.', 'correct');
+            const q = state.preguntaActual;
+            if (q && q.hint) {
+                showFeedback(`💡 Pista: ${q.hint}`, 'correct');
+            } else if (q && (q.type === 'multiple' || q.type === 'opcion_multiple')) {
+                const buttons = document.querySelectorAll('.option-btn');
+                let hidden = false;
+                buttons.forEach(btn => {
+                    if (!hidden && parseInt(btn.dataset.originalIndex) !== parseInt(q.correct) && btn.style.visibility !== 'hidden') {
+                        btn.style.visibility = 'hidden';
+                        hidden = true;
+                    }
+                });
+                showFeedback('💡 Se ha descartado una opción incorrecta.', 'correct');
+            } else {
+                showFeedback('💡 Piensa en la opción más lógica.', 'correct');
+            }
             break;
     }
 }
@@ -961,6 +975,9 @@ function resaltarEvidenciaEnLectura(textKey, evidenceText, tipo) {
 function abrirLecturaFullscreen(textKey) {
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
+    if (state.mode === 'timed') {
+        state.isFrozen = true;
+    }
     const overlay = document.createElement('div');
     overlay.className = 'lectura-fullscreen-overlay';
     overlay.id = 'lectura-fullscreen-overlay';
@@ -982,6 +999,9 @@ function cerrarLecturaFullscreen() {
     const overlay = document.getElementById('lectura-fullscreen-overlay');
     if (overlay) { sincronizarResaltadosFullscreen(); overlay.remove(); }
     document.body.style.overflow = '';
+    if (state.mode === 'timed' && !state._freezeTimeout) {
+        state.isFrozen = false;
+    }
 }
 function resaltarDesdeFullscreen(textKey) {
     const selection = window.getSelection();
