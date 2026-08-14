@@ -1,6 +1,9 @@
+
+
+
 /**
  * ============================================================
- * PAES Challenge Engine v5.2.2 — Token QR + Google Sheets (Optimizado)
+ * PAES Challenge Engine v5.2.3 — Token QR + Google Sheets (Optimizado)
  * Autenticación por token de un solo uso + Nombre/PIN
  * Preguntas locales + Leaderboard en Google Sheets
  * SIN 50/50
@@ -131,34 +134,28 @@ document.addEventListener('DOMContentLoaded', () => {
     verificarAccesoQR();
 });
 
-// ===== CONTROL DE ACCESO QR (CORREGIDO Y OPTIMIZADO) =====
+// ===== CONTROL DE ACCESO QR =====
 async function verificarAccesoQR() {
     const tokenGuardado = safeLocalGet(TOKEN_STORAGE_KEY, null);
     const urlParams = new URLSearchParams(window.location.search);
     const tokenURL = urlParams.get('token');
 
-    // 1. Si el token ya fue validado en este dispositivo previamente
     if (tokenGuardado) {
-        ocultarPantallasBloqueo();
         mostrarPantallaInicial();
         return;
     }
 
-    // 2. Si es la primera vez y entra a través del enlace con ?token=XYZ
     if (tokenURL) {
-        mostrarErrorRegistro('Verificando acceso QR...');
         const valido = await validarTokenQR(tokenURL);
         if (valido) {
             safeLocalSet(TOKEN_STORAGE_KEY, tokenURL);
             window.history.replaceState({}, document.title, window.location.pathname);
-            ocultarPantallasBloqueo();
             mostrarPantallaInicial();
         } else {
-            mostrarPantallaBloqueoQR('Token inválido, expirado o ya utilizado.');
+            mostrarPantallaBloqueoQR('Token inválido o ya utilizado.');
         }
     } else {
-        // 3. Sin token local ni token en la URL -> Bloqueo total
-        mostrarPantallaBloqueoQR('Escanea el código QR oficial para ingresar.');
+        mostrarPantallaBloqueoQR();
     }
 }
 
@@ -175,11 +172,6 @@ async function validarTokenQR(token) {
         console.error('Error validando token QR:', err);
         return false;
     }
-}
-
-function ocultarPantallasBloqueo() {
-    const qrScreen = document.getElementById('qr-lock-screen');
-    if (qrScreen) qrScreen.style.display = 'none';
 }
 
 function mostrarPantallaBloqueoQR(mensaje = '') {
@@ -202,11 +194,9 @@ function mostrarPantallaBloqueoQR(mensaje = '') {
 function mostrarPantallaInicial() {
     const idUsuario = safeLocalGet('paes_id_usuario', null);
     const nombre = safeLocalGet('paes_jugador_nombre', null);
-    
     if (idUsuario && nombre) {
         state.idUsuario = idUsuario;
         state.nombreUsuario = nombre;
-        ocultarPantallaRegistro();
         mostrarPantallaMaterias();
     } else {
         mostrarPantallaRegistro();
@@ -235,6 +225,11 @@ function mostrarPantallaRegistro() {
 function ocultarPantallaRegistro() {
     const lock = document.getElementById('lock-screen');
     if (lock) lock.style.display = 'none';
+}
+
+function ocultarPantallasBloqueo() {
+    const qrScreen = document.getElementById('qr-lock-screen');
+    if (qrScreen) qrScreen.style.display = 'none';
 }
 
 async function intentarIngresoInicial() {
@@ -418,7 +413,6 @@ function loadQuestion() {
     const qt = document.getElementById('question-text');
     if (qt) {
         qt.innerHTML = q.question || '';
-        // Renderizado automático de fórmulas matemáticas con KaTeX si está disponible
         if (window.katex) {
             window.katex.renderMathInElement(qt, {
                 delimiters: [
@@ -460,7 +454,6 @@ function loadMultipleChoice(q) {
         btn.innerHTML = opciones[orig];
         btn.dataset.originalIndex = orig;
         
-        // Renderizar fórmulas dentro de las opciones si existen
         if (window.katex) {
             window.katex.renderMathInElement(btn, {
                 delimiters: [{left: '$', right: '$', display: false}],
@@ -918,9 +911,7 @@ function showScreen(id) {
     }
     if (id === 'screen-leaderboard') loadLeaderboard();
     if (id === 'screen-badges') loadBadges();
-    if (id === 'screen-welcome') {
-        if (state.idUsuario) mostrarPantallaMaterias();
-    }
+    // No llamar a mostrarPantallaMaterias aquí para evitar recursión
     if (typeof injectBuhoSVGs === 'function') setTimeout(injectBuhoSVGs, 100);
 }
 
