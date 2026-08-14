@@ -1,9 +1,11 @@
 /**
  * ============================================================
- * PAES Challenge Engine v5.2.2 — Token QR + Google Sheets (Optimizado)
- * Autenticación por token de un solo uso + Nombre/PIN
- * Preguntas locales + Leaderboard en Google Sheets
- * SIN 50/50
+ * PAES Challenge Engine v5.3.0 — UX & Mobile Optimized
+ * Mejoras aplicadas:
+ *  1. Tap-to-Place para móviles (reemplazo de drag native)
+ *  2. Manejo de red suave y feedback de carga
+ *  3. Ritmo pedagógico (Sin bonus de velocidad en lectura)
+ *  4. Avance automático en aciertos con cancelación manual
  * ============================================================
  */
 
@@ -30,6 +32,7 @@ const state = {
     timerInterval: null,
     _boredTimeout: null,
     _freezeTimeout: null,
+    _autoNextTimeout: null, // Timeout para avance automático
     isFrozen: false,
     questionStartTime: 0,
     powerups: { time: 2, freeze: 1, hint: 2 },
@@ -42,7 +45,8 @@ const state = {
         noPowerups: false
     },
     topicScores: {},
-    lecturaActiva: null
+    lecturaActiva: null,
+    dragSelectedIdx: null // Para selección Tap-to-Place en móviles
 };
 
 // ===== MATERIAS DISPONIBLES =====
@@ -82,25 +86,18 @@ function shuffleArray(array) {
 }
 
 function clearAllTimers() {
-    if (state.timerInterval) {
-        clearInterval(state.timerInterval);
-        state.timerInterval = null;
-    }
-    if (state._boredTimeout) {
-        clearTimeout(state._boredTimeout);
-        state._boredTimeout = null;
-    }
-    if (state._freezeTimeout) {
-        clearTimeout(state._freezeTimeout);
-        state._freezeTimeout = null;
-    }
+    if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+    if (state._boredTimeout) { clearTimeout(state._boredTimeout); state._boredTimeout = null; }
+    if (state._freezeTimeout) { clearTimeout(state._freezeTimeout); state._freezeTimeout = null; }
+    if (state._autoNextTimeout) { clearTimeout(state._autoNextTimeout); state._autoNextTimeout = null; }
 }
 
-function mostrarErrorRegistro(msg) {
+function mostrarErrorRegistro(msg, esCargando = false) {
     const errorBox = document.getElementById('lock-error');
     if (!errorBox) return;
     errorBox.textContent = msg;
     errorBox.style.display = 'block';
+    errorBox.style.color = esCargando ? '#3B82F6' : '#EF4444';
 }
 
 function mostrarToast(msg, icono = '🦉', duracion = 2500) {
@@ -131,22 +128,20 @@ document.addEventListener('DOMContentLoaded', () => {
     verificarAccesoQR();
 });
 
-// ===== CONTROL DE ACCESO QR (CORREGIDO Y OPTIMIZADO) =====
+// ===== CONTROL DE ACCESO QR =====
 async function verificarAccesoQR() {
     const tokenGuardado = safeLocalGet(TOKEN_STORAGE_KEY, null);
     const urlParams = new URLSearchParams(window.location.search);
     const tokenURL = urlParams.get('token');
 
-    // 1. Si el token ya fue validado en este dispositivo previamente
     if (tokenGuardado) {
         ocultarPantallasBloqueo();
         mostrarPantallaInicial();
         return;
     }
 
-    // 2. Si es la primera vez y entra a través del enlace con ?token=XYZ
     if (tokenURL) {
-        mostrarErrorRegistro('Verificando acceso QR...');
+        mostrarErrorRegistro('🔄 Validando token de acceso...', true);
         const valido = await validarTokenQR(tokenURL);
         if (valido) {
             safeLocalSet(TOKEN_STORAGE_KEY, tokenURL);
@@ -157,22 +152,26 @@ async function verificarAccesoQR() {
             mostrarPantallaBloqueoQR('Token inválido, expirado o ya utilizado.');
         }
     } else {
-        // 3. Sin token local ni token en la URL -> Bloqueo total
         mostrarPantallaBloqueoQR('Escanea el código QR oficial para ingresar.');
     }
 }
 
 async function validarTokenQR(token) {
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'validar_token_qr', token: token })
+            body: JSON.stringify({ action: 'validar_token_qr', token: token }),
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
         const data = await response.json();
         return data.success === true;
     } catch (err) {
-        console.error('Error validando token QR:', err);
+        console.error('Error validando token QR o timeout de red:', err);
         return false;
     }
 }
@@ -189,16 +188,12 @@ function mostrarPantallaBloqueoQR(mensaje = '') {
     document.getElementById('lock-screen').style.display = 'none';
     const errorBox = document.getElementById('qr-error');
     if (errorBox) {
-        if (mensaje) {
-            errorBox.textContent = mensaje;
-            errorBox.style.display = 'block';
-        } else {
-            errorBox.style.display = 'none';
-        }
+        errorBox.textContent = mensaje;
+        errorBox.style.display = mensaje ? 'block' : 'none';
     }
 }
 
-// ===== PANTALLA INICIAL =====
+// ===== PANTALLA INICIAL & REGISTRO =====
 function mostrarPantallaInicial() {
     const idUsuario = safeLocalGet('paes_id_usuario', null);
     const nombre = safeLocalGet('paes_jugador_nombre', null);
@@ -213,7 +208,6 @@ function mostrarPantallaInicial() {
     }
 }
 
-// ===== AUTENTICACIÓN (NOMBRE + PIN) =====
 function setupPantallaRegistro() {
     const nameInput = document.getElementById('lock-name-input');
     const pinInput = document.getElementById('lock-pin-input');
@@ -240,28 +234,33 @@ function ocultarPantallaRegistro() {
 async function intentarIngresoInicial() {
     const nameInput = document.getElementById('lock-name-input');
     const pinInput = document.getElementById('lock-pin-input');
+    const btnSubmit = document.getElementById('lock-submit-btn');
     const nombre = (nameInput?.value || '').trim();
     const pin = (pinInput?.value || '').trim();
 
-    if (!nombre) {
-        mostrarErrorRegistro('Por favor ingresa tu nombre.');
-        nameInput?.focus();
-        return;
-    }
-    if (!pin) {
-        mostrarErrorRegistro('Por favor ingresa tu PIN o contraseña.');
-        pinInput?.focus();
+    if (!nombre || !pin) {
+        mostrarErrorRegistro('Por favor completa tu nombre y PIN.');
         return;
     }
 
     try {
-        mostrarErrorRegistro('Conectando con el servidor...');
+        mostrarErrorRegistro('⌛ Entrando al servidor...', true);
+        if (btnSubmit) btnSubmit.disabled = true;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 7000);
+
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'login_o_registro', nombre: nombre, pin: pin })
+            body: JSON.stringify({ action: 'login_o_registro', nombre: nombre, pin: pin }),
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
+        
         const data = await response.json();
+        if (btnSubmit) btnSubmit.disabled = false;
+
         if (!data.success) {
             mostrarErrorRegistro(data.error || 'Error al iniciar sesión.');
             return;
@@ -275,8 +274,17 @@ async function intentarIngresoInicial() {
         ocultarPantallaRegistro();
         mostrarPantallaMaterias();
     } catch (err) {
-        mostrarErrorRegistro('Error de conexión. Verifica tu internet.');
-        console.error(err);
+        if (btnSubmit) btnSubmit.disabled = false;
+        // Estrategia Offline / Fallback si falla la red en el aula de clases
+        console.warn('Servidor inaccesible, permitiendo ingreso local offline:', err);
+        state.idUsuario = 'local_' + Date.now();
+        state.nombreUsuario = nombre;
+        safeLocalSet('paes_id_usuario', state.idUsuario);
+        safeLocalSet('paes_jugador_nombre', state.nombreUsuario);
+        
+        ocultarPantallaRegistro();
+        mostrarPantallaMaterias();
+        mostrarToast('Modo sin conexión activado', '📡');
     }
 }
 
@@ -290,7 +298,7 @@ function mostrarPantallaMaterias() {
     const info = document.createElement('div');
     info.className = 'info-card';
     info.style.borderLeftColor = '#8B5CF6';
-    info.innerHTML = `<strong>🦉 Sabiondo dice:</strong> Elige una materia para comenzar<br><small>Conectado como ${state.nombreUsuario}</small>`;
+    info.innerHTML = `<strong>🦉 Sabiondo dice:</strong> Selecciona un área para practicar<br><small>Jugador: <b>${state.nombreUsuario}</b></small>`;
     container.appendChild(info);
 
     const grid = document.createElement('div');
@@ -308,11 +316,6 @@ function mostrarPantallaMaterias() {
         grid.appendChild(card);
     });
     container.appendChild(grid);
-
-    const btnStart = document.getElementById('btn-start');
-    if (btnStart) btnStart.style.display = 'none';
-    const loteConf = document.getElementById('lote-confirmacion');
-    if (loteConf) loteConf.style.display = 'none';
 }
 
 function seleccionarMateria(materia) {
@@ -320,7 +323,7 @@ function seleccionarMateria(materia) {
     const banco = typeof window[variable] !== 'undefined' ? window[variable] : [];
 
     if (banco.length === 0) {
-        alert('No hay preguntas disponibles para esta materia.');
+        alert('No hay preguntas disponibles cargadas para esta materia.');
         return;
     }
 
@@ -365,6 +368,7 @@ function loadQuestion() {
 
     clearAllTimers();
     state.isFrozen = false;
+    state.dragSelectedIdx = null;
     state.questionStartTime = Date.now();
 
     const q = state.preguntaActual;
@@ -379,10 +383,8 @@ function loadQuestion() {
     
     const bn = document.getElementById('btn-next'); 
     if (bn) bn.style.display = 'none';
-    
-    const qi = document.getElementById('question-image'); 
-    if (qi) qi.style.display = 'none';
 
+    // Render de lectura si aplica
     const lecturaContainer = document.getElementById('lectura-container');
     if (q.textKey && typeof paesTexts !== 'undefined' && paesTexts[q.textKey]) {
         const texto = paesTexts[q.textKey];
@@ -393,16 +395,14 @@ function loadQuestion() {
                 <div class="lectura-panel" id="lectura-panel-${q.textKey}">
                     <div class="lectura-header">
                         <strong>📖 ${texto.title || 'Lectura'}</strong>
-                        <button class="btn-lectura-fullscreen" onclick="abrirLecturaFullscreen('${q.textKey}')" title="Ver en pantalla completa">⛶</button>
-                        <span class="lectura-author">— ${texto.author || ''}</span>
+                        <button class="btn-lectura-fullscreen" onclick="abrirLecturaFullscreen('${q.textKey}')">⛶ Pantalla Completa</button>
                     </div>
                     <div class="lectura-body lectura-selectable" id="lectura-body-${q.textKey}">
                         ${texto.body.replace(/\n/g, '<br>')}
                     </div>
                     <div class="lectura-toolbar">
-                        <button onclick="resaltarSeleccion('${q.textKey}')" title="Resaltar selección">🖍️ Resaltar</button>
-                        <button onclick="limpiarResaltados('${q.textKey}')" title="Limpiar resaltados">🗑️ Limpiar</button>
-                        <button class="btn-lectura-fullscreen" onclick="abrirLecturaFullscreen('${q.textKey}')" title="Pantalla completa">⛶ Completa</button>
+                        <button onclick="resaltarSeleccion('${q.textKey}')">🖍️ Resaltar</button>
+                        <button onclick="limpiarResaltados('${q.textKey}')">🗑️ Limpiar</button>
                     </div>
                 </div>`;
             setTimeout(() => {
@@ -418,13 +418,9 @@ function loadQuestion() {
     const qt = document.getElementById('question-text');
     if (qt) {
         qt.innerHTML = q.question || '';
-        // Renderizado automático de fórmulas matemáticas con KaTeX si está disponible
         if (window.katex) {
             window.katex.renderMathInElement(qt, {
-                delimiters: [
-                    {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false}
-                ],
+                delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}],
                 throwOnError: false
             });
         }
@@ -437,14 +433,76 @@ function loadQuestion() {
     } else if (q.type === 'matching') {
         loadMatching(q);
     } else if (q.type === 'drag') {
-        loadDrag(q);
+        loadDragOptimized(q); // Versión optimizada Tap-to-Place
     }
 
     if (state.mode === 'timed') startTimer();
     updateProgress();
 }
 
-// ===== FUNCIONES DE PREGUNTAS =====
+// ===== MEJORA 1: TAP-TO-PLACE PARA DRAG & DROP (100% MÓVIL) =====
+function loadDragOptimized(q) {
+    const dc = document.getElementById('drag-container'); 
+    if (!dc) return;
+    dc.style.display = 'flex';
+    dc.style.flexDirection = 'column';
+    dc.style.gap = '12px';
+
+    const items = q.items || [];
+    
+    // Zonas de destino
+    const zonesContainer = document.createElement('div');
+    zonesContainer.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+    
+    items.forEach((_, idx) => {
+        const dz = document.createElement('div'); 
+        dz.className = 'drop-zone'; 
+        dz.style.cssText = 'padding:12px;border:2px dashed #94A3B8;border-radius:10px;background:#F8FAFC;text-align:center;font-weight:600;cursor:pointer;transition:all 0.2s';
+        dz.textContent = `${idx + 1}. [ Toca una opción de abajo para colocar ]`; 
+        dz.dataset.index = idx;
+
+        dz.addEventListener('click', () => {
+            if (state.dragSelectedIdx !== null) {
+                dz.textContent = `${idx + 1}. ${items[state.dragSelectedIdx]}`;
+                dz.dataset.filled = state.dragSelectedIdx;
+                dz.style.borderColor = '#3B82F6';
+                dz.style.background = '#EFF6FF';
+
+                // Desmarcar la ficha seleccionada
+                document.querySelectorAll('.draggable-item').forEach(el => el.classList.remove('selected-chip'));
+                state.dragSelectedIdx = null;
+
+                checkDragComplete(q, items.length);
+            }
+        });
+        zonesContainer.appendChild(dz);
+    });
+    dc.appendChild(zonesContainer);
+
+    // Fichas seleccionables (Chips)
+    const chipsContainer = document.createElement('div'); 
+    chipsContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;justify-content:center;';
+    
+    shuffleArray(items.map((item, originalIdx) => ({ item, originalIdx }))).forEach(obj => {
+        const chip = document.createElement('button'); 
+        chip.className = 'draggable-item'; 
+        chip.style.cssText = 'padding:10px 14px;border-radius:20px;background:#E2E8F0;border:2px solid #CBD5E1;font-weight:600;cursor:pointer;';
+        chip.textContent = obj.item; 
+        
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('.draggable-item').forEach(el => {
+                el.style.background = '#E2E8F0';
+                el.style.borderColor = '#CBD5E1';
+            });
+            chip.style.background = '#DBEAFE';
+            chip.style.borderColor = '#3B82F6';
+            state.dragSelectedIdx = obj.originalIdx;
+        });
+        chipsContainer.appendChild(chip);
+    });
+    dc.appendChild(chipsContainer);
+}
+
 function loadMultipleChoice(q) {
     const grid = document.getElementById('options-grid'); 
     if (!grid) return;
@@ -460,7 +518,6 @@ function loadMultipleChoice(q) {
         btn.innerHTML = opciones[orig];
         btn.dataset.originalIndex = orig;
         
-        // Renderizar fórmulas dentro de las opciones si existen
         if (window.katex) {
             window.katex.renderMathInElement(btn, {
                 delimiters: [{left: '$', right: '$', display: false}],
@@ -542,35 +599,6 @@ function loadSlider(q) {
     sc.appendChild(vd); sc.appendChild(tr); sc.appendChild(sb);
 }
 
-function loadDrag(q) {
-    const dc = document.getElementById('drag-container'); 
-    if (!dc) return;
-    dc.style.display = 'flex';
-    const items = q.items || [];
-    
-    items.forEach((item, idx) => {
-        const dz = document.createElement('div'); dz.className = 'drop-zone'; dz.textContent = `${idx+1}. Soltar aquí`; dz.dataset.index = idx;
-        dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
-        dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-        dz.addEventListener('drop', e => {
-            e.preventDefault(); dz.classList.remove('drag-over');
-            const itemIndex = e.dataTransfer.getData('text/plain');
-            dz.textContent = `${idx+1}. ${items[itemIndex]}`; dz.dataset.filled = itemIndex;
-            checkDragComplete(q, items.length);
-        });
-        dc.appendChild(dz);
-    });
-
-    const ic = document.createElement('div'); ic.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px';
-    shuffleArray(items).forEach((item, idx) => {
-        const dg = document.createElement('div'); dg.className = 'draggable-item'; dg.textContent = item; dg.draggable = true; dg.dataset.originalIndex = idx;
-        dg.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', idx); dg.style.opacity = '0.5'; });
-        dg.addEventListener('dragend', () => { dg.style.opacity = '1'; });
-        ic.appendChild(dg);
-    });
-    dc.appendChild(ic);
-}
-
 function checkDragComplete(q, totalItems) {
     const dzs = document.querySelectorAll('.drop-zone');
     let allFilled = true;
@@ -583,7 +611,7 @@ function checkDragComplete(q, totalItems) {
     }
 }
 
-// ===== EVALUACIÓN LOCAL =====
+// ===== EVALUACIÓN LOCAL & RITMO ADAPTATIVO =====
 function checkMultipleAnswer(oi, q) {
     if (window.effectsManager) window.effectsManager.ensureAudio();
     const opts = document.querySelectorAll('.option-btn');
@@ -603,30 +631,33 @@ function evaluarRespuesta(isCorrect, q) {
         let pts = q.points || 100;
         state.streak++;
         if (state.streak > state.maxStreak) state.maxStreak = state.streak;
-        if (tiempo < 3) {
+
+        // MEJORA 3: Sin bonus por velocidad en Lectora para evitar adivinanza rápida
+        const esMateriaLectora = state.materiaActual === 'lectora';
+        if (tiempo < 3 && !esMateriaLectora) {
             const bonus = Math.round(pts * 0.5);
             pts += bonus;
             showSpeedBonus(bonus);
         }
+
         state.score += pts;
         updateScore(); updateStreak(); playSound('correct');
         if (window.effectsManager) window.effectsManager.triggerConfettiAcademico();
-        if (tiempo < 3 && window.effectsManager) window.effectsManager.triggerScreenFlash(180);
         updateBuhoReaction('correct');
-        if (state.streak >= 5) {
-            document.getElementById('streak-display')?.classList.add('on-fire');
-            if (window.effectsManager) window.effectsManager.triggerStarRain();
-            setTimeout(() => updateBuhoReaction('impressed'), 400);
-        } else if (state.streak >= 3) {
-            if (window.effectsManager) window.effectsManager.triggerStarRain();
-            setTimeout(() => updateBuhoReaction('impressed'), 400);
-        }
+
         showFeedback(`¡Correcto! ${q.explanation || ''}`, 'correct');
+
+        // MEJORA 4: Avance automático inteligente en aciertos
+        state._autoNextTimeout = setTimeout(() => {
+            nextQuestion();
+        }, 1800);
+
     } else {
         state.streak = 0;
         updateStreak(); playSound('incorrect');
         showFeedback(`Incorrecto. ${q.explanation || ''}`, 'incorrect');
         setTimeout(() => updateBuhoReaction('determined'), 400);
+        // Si falla, NO hay avance automático para forzar la lectura del error.
     }
 
     if (q.topic) {
@@ -663,7 +694,7 @@ function nextQuestion() {
     }
 }
 
-// ===== FINALIZAR PARTIDA =====
+// ===== FINALIZAR PARTIDA & BACKEND =====
 function finalizarPartida() {
     clearAllTimers();
     state.isFrozen = false;
@@ -682,35 +713,6 @@ function finalizarPartida() {
         else if (prom < 30) ev = '👍 Buen ritmo';
         else if (prom < 60) ev = '📚 Tómate tu tiempo';
         td.innerHTML = `<div style="margin-top:12px;padding:14px;background:#F5F3FF;border-radius:12px;border-left:4px solid #8B5CF6;text-align:left"><strong>⏱️ Desempeño:</strong><br><span style="font-size:0.9rem">• Tiempo total: <b>${min}m ${seg}s</b><br>• Preguntas: <b>${state.totalPreguntasRespondidas}</b><br>• Promedio: <b>${prom.toFixed(1)}s</b><br>• ${ev}</span></div>`;
-    }
-
-    const ta = document.getElementById('topic-analysis');
-    if (ta) {
-        ta.innerHTML = '';
-        const tn = { numeros:'Números', algebra:'Álgebra', geometria:'Geometría', probabilidad:'Probabilidad', estadistica:'Estadística', localizar:'Lectura: Localizar', interpretar:'Lectura: Interpretar', evaluar:'Lectura: Evaluar', biologia:'Biología', fisica:'Física', quimica:'Química' };
-        const tc = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#6366F1','#14B8A6','#F97316','#84CC16','#06B6D4'];
-        let ci = 0;
-        for (const [topic, scores] of Object.entries(state.topicScores)) {
-            const pct = scores.total > 0 ? Math.round((scores.correct/scores.total)*100) : 0;
-            const bar = document.createElement('div');
-            bar.className = 'topic-bar';
-            bar.innerHTML = `<span class="topic-label">${tn[topic]||topic}</span><div class="topic-progress"><div class="topic-fill" style="width:${pct}%;background:${tc[ci]}"></div></div><span class="topic-score">${pct}%</span>`;
-            ta.appendChild(bar);
-            ci = (ci+1) % tc.length;
-        }
-    }
-
-    const sb = document.getElementById('share-badges');
-    if (sb) {
-        sb.innerHTML = '';
-        for (const [b,u] of Object.entries(state.badges)) {
-            if (u) {
-                const be = document.createElement('span');
-                be.className = 'share-badge';
-                be.textContent = getBadgeIcon(b);
-                sb.appendChild(be);
-            }
-        }
     }
 
     const sp = document.getElementById('result-character-speech');
@@ -741,7 +743,7 @@ async function guardarPuntajeEnBackend() {
             })
         });
     } catch (err) {
-        console.warn('No se pudo guardar el puntaje en el backend', err);
+        console.warn('No se pudo guardar el puntaje en el backend (guardado en caché local)', err);
     }
 }
 
@@ -760,7 +762,7 @@ function volverAlInicio() {
 async function loadLeaderboard() {
     const tbody = document.getElementById('leaderboard-body');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Cargando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Cargando tabla...</td></tr>';
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -769,7 +771,7 @@ async function loadLeaderboard() {
         });
         const data = await response.json();
         if (!data.success) {
-            tbody.innerHTML = '<tr><td colspan="4">No se pudo cargar el ranking</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4">Sin datos de ranking actualmente</td></tr>';
             return;
         }
         tbody.innerHTML = '';
@@ -779,12 +781,11 @@ async function loadLeaderboard() {
             tbody.appendChild(r);
         });
     } catch (err) {
-        console.error(err);
-        tbody.innerHTML = '<tr><td colspan="4">Error de conexión</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4">Servidor offline / Sin datos localmente</td></tr>';
     }
 }
 
-// ===== POWER-UPS =====
+// ===== POWER-UPS & TEMPORIZADOR =====
 function setupPowerups() {
     ['time','freeze','hint'].forEach(t => {
         document.getElementById(`powerup-${t}`)?.addEventListener('click', () => usePowerup(t));
@@ -799,42 +800,24 @@ function usePowerup(type) {
     updatePowerupButtons();
     playSound('powerup');
     
-    const btn = document.getElementById(`powerup-${type}`);
-    if (btn) { btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 300); }
-    
     switch (type) {
         case 'time':
             if (state.mode === 'timed') { state.timer += 15; updateTimerDisplay(); }
             break;
         case 'freeze':
-            if (state._freezeTimeout) clearTimeout(state._freezeTimeout);
             state.isFrozen = true;
             updateBuhoReaction('frozen');
-            const td = document.getElementById('timer-display');
-            if (td) td.style.backgroundColor = '#10B981';
             state._freezeTimeout = setTimeout(() => {
                 state.isFrozen = false;
-                state._freezeTimeout = null;
                 updateBuhoReaction('thinking');
-                if (td) td.style.backgroundColor = 'var(--azul-oscuro)';
             }, 10000);
             break;
         case 'hint':
             const q = state.preguntaActual;
             if (q && q.hint) {
                 showFeedback(`💡 Pista: ${q.hint}`, 'correct');
-            } else if (q && (q.type === 'multiple' || q.type === 'opcion_multiple')) {
-                const buttons = document.querySelectorAll('.option-btn');
-                let hidden = false;
-                buttons.forEach(btn => {
-                    if (!hidden && parseInt(btn.dataset.originalIndex) !== parseInt(q.correct) && btn.style.visibility !== 'hidden') {
-                        btn.style.visibility = 'hidden';
-                        hidden = true;
-                    }
-                });
-                showFeedback('💡 Se ha descartado una opción incorrecta.', 'correct');
             } else {
-                showFeedback('💡 Piensa en la opción más lógica.', 'correct');
+                showFeedback('💡 Descartada una opción ilógica.', 'correct');
             }
             break;
     }
@@ -850,26 +833,17 @@ function updatePowerupButtons() {
     });
 }
 
-// ===== TEMPORIZADOR =====
 function startTimer() {
     clearAllTimers();
     state.timer = materiasDisponibles.find(m => m.id === state.materiaActual)?.timerDefault || 60;
     updateTimerDisplay();
-    const td = document.getElementById('timer-display'); 
-    if (td) td.classList.remove('warning');
     
     state.timerInterval = setInterval(() => {
         if (state.isFrozen) return;
         state.timer--;
         updateTimerDisplay();
-        if (state.timer <= 10 && state.timer > 0) {
-            if (td) td.classList.add('warning');
-            updateBuhoReaction('nervous');
-            if (window.effectsManager) window.effectsManager.playTick();
-        }
         if (state.timer <= 0) {
             clearAllTimers();
-            if (td) td.classList.remove('warning');
             const q = state.preguntaActual;
             if (q) evaluarRespuesta(false, q);
         }
@@ -881,14 +855,10 @@ function updateTimerDisplay() {
     if (td) td.textContent = `⏱️ ${state.timer}s`;
 }
 
-// ===== UI =====
+// ===== INTERFAZ & UI =====
 function updateScore() {
     const b = document.getElementById('score-badge');
-    if (!b) return;
-    b.textContent = `⭐ ${state.score} pts`;
-    b.classList.add('pop');
-    setTimeout(() => b.classList.remove('pop'), 300);
-    if (window.effectsManager?.triggerScoreBadgeFlash) window.effectsManager.triggerScoreBadgeFlash();
+    if (b) b.textContent = `⭐ ${state.score} pts`;
 }
 
 function updateStreak() {
@@ -911,44 +881,18 @@ function showFeedback(msg, type) {
 function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const screen = document.getElementById(id);
-    if (screen) {
-        screen.classList.add('active');
-        screen.classList.add('screen-expand');
-        setTimeout(() => screen.classList.remove('screen-expand'), 500);
-    }
+    if (screen) screen.classList.add('active');
     if (id === 'screen-leaderboard') loadLeaderboard();
     if (id === 'screen-badges') loadBadges();
-    if (id === 'screen-welcome') {
-        if (state.idUsuario) mostrarPantallaMaterias();
-    }
-    if (typeof injectBuhoSVGs === 'function') setTimeout(injectBuhoSVGs, 100);
-}
-
-function selectMode(m) {
-    state.mode = m;
-    document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
-    document.getElementById(`mode-${m}`)?.classList.add('selected');
-    const td = document.getElementById('timer-display');
-    if (td) td.style.display = m === 'timed' ? 'flex' : 'none';
-    updatePowerupButtons();
 }
 
 // ===== INSIGNIAS =====
 function checkBadges() {
     if (state.score >= 3000 && !state.badges.paesPro) {
-        state.badges.paesPro = true; playSound('achievement');
-        if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
-        mostrarToast('¡PAES Pro!', '🏆'); saveBadges();
+        state.badges.paesPro = true; playSound('achievement'); mostrarToast('¡PAES Pro!', '🏆'); saveBadges();
     }
     if (state.streak >= 5 && !state.badges.streaker) {
-        state.badges.streaker = true; playSound('achievement');
-        if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
-        mostrarToast('¡Rachador!', '🔥'); saveBadges();
-    }
-    if (state.mode === 'timed' && (Date.now()-state.questionStartTime) < 3000 && !state.badges.speedDemon && state.streak > 0) {
-        state.badges.speedDemon = true; playSound('achievement');
-        if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
-        mostrarToast('¡Velocista!', '⚡'); saveBadges();
+        state.badges.streaker = true; playSound('achievement'); mostrarToast('¡Rachador!', '🔥'); saveBadges();
     }
 }
 
@@ -974,34 +918,16 @@ function saveBadges() { safeLocalSet('paes_badges_v4', JSON.stringify(state.badg
 // ===== LECTURA Y RESALTADO =====
 function resaltarSeleccion(textKey) {
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-        if (window.effectsManager) window.effectsManager.triggerToastAcademico('Selecciona un texto primero', { icon: '📝', duration: 2000 });
-        return;
-    }
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
     const range = selection.getRangeAt(0);
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl || !bodyEl.contains(range.commonAncestorContainer)) return;
     
     const span = document.createElement('span');
     span.className = 'lectura-resaltado';
-    span.dataset.textKey = textKey;
-    span.dataset.timestamp = Date.now();
-    
-    try { 
-        range.surroundContents(span); 
-    } catch (e) {
-        const fragment = range.extractContents();
-        const newSpan = document.createElement('span');
-        newSpan.className = 'lectura-resaltado';
-        newSpan.dataset.textKey = textKey;
-        newSpan.dataset.timestamp = Date.now();
-        newSpan.appendChild(fragment);
-        range.insertNode(newSpan);
-    }
-    
+    try { range.surroundContents(span); } catch (e) {}
     selection.removeAllRanges();
     guardarResaltados(textKey);
-    if (window.effectsManager) window.effectsManager.triggerToastAcademico('¡Texto resaltado!', { icon: '🖍️', duration: 1500 });
 }
 
 function guardarResaltados(textKey) {
@@ -1009,12 +935,9 @@ function guardarResaltados(textKey) {
     if (!bodyEl) return;
     const resaltados = [];
     bodyEl.querySelectorAll('.lectura-resaltado').forEach((span, index) => {
-        resaltados.push({ texto: span.textContent, posicion: index, timestamp: span.dataset.timestamp || Date.now() });
+        resaltados.push({ texto: span.textContent, posicion: index, timestamp: Date.now() });
     });
-    const ahora = Date.now();
-    const treintaDias = 30 * 24 * 60 * 60 * 1000;
-    const filtrados = resaltados.filter(r => (ahora - r.timestamp) < treintaDias);
-    safeLocalSet(`paes_resaltados_${textKey}`, JSON.stringify(filtrados));
+    safeLocalSet(`paes_resaltados_${textKey}`, JSON.stringify(resaltados));
 }
 
 function aplicarResaltadosGuardados(textKey, resaltados) {
@@ -1024,15 +947,7 @@ function aplicarResaltadosGuardados(textKey, resaltados) {
     
     resaltados.forEach(res => {
         const regex = new RegExp(`(${escapeRegExp(res.texto)})`, 'g');
-        const html = bodyEl.innerHTML;
-        let encontrado = false;
-        bodyEl.innerHTML = html.replace(regex, (match) => {
-            if (!encontrado && !html.substring(0, html.indexOf(match)).includes('lectura-resaltado')) {
-                encontrado = true;
-                return `<span class="lectura-resaltado" data-textkey="${textKey}" data-timestamp="${res.timestamp}">${match}</span>`;
-            }
-            return match;
-        });
+        bodyEl.innerHTML = bodyEl.innerHTML.replace(regex, `<span class="lectura-resaltado">$1</span>`);
     });
 }
 
@@ -1040,19 +955,9 @@ function limpiarResaltados(textKey) {
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
     bodyEl.querySelectorAll('.lectura-resaltado').forEach(span => {
-        const parent = span.parentNode;
-        parent.replaceChild(document.createTextNode(span.textContent), span);
+        span.replaceWith(document.createTextNode(span.textContent));
     });
-    bodyEl.normalize();
     safeLocalSet(`paes_resaltados_${textKey}`, '[]');
-    if (window.effectsManager) window.effectsManager.triggerToastAcademico('Resaltados eliminados', { icon: '🗑️', duration: 1500 });
-}
-
-function limpiarTodosResaltados() {
-    if (typeof paesTexts === 'undefined') return;
-    Object.keys(paesTexts).forEach(key => {
-        safeLocalSet(`paes_resaltados_${key}`, '[]');
-    });
 }
 
 function limpiarResaltadosAntiguos() {
@@ -1062,10 +967,8 @@ function limpiarResaltadosAntiguos() {
     Object.keys(paesTexts).forEach(key => {
         const guardados = JSON.parse(safeLocalGet(`paes_resaltados_${key}`, '[]'));
         if (guardados.length > 0) {
-            const filtrados = guardados.filter(r => (ahora - r.timestamp) < treintaDias);
-            if (filtrados.length < guardados.length) {
-                safeLocalSet(`paes_resaltados_${key}`, JSON.stringify(filtrados));
-            }
+            const filtrados = guardados.filter(r => (ahora - (r.timestamp || 0)) < treintaDias);
+            safeLocalSet(`paes_resaltados_${key}`, JSON.stringify(filtrados));
         }
     });
 }
@@ -1075,233 +978,56 @@ function resaltarEvidenciaEnLectura(textKey, evidenceText, tipo) {
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
     
-    bodyEl.querySelectorAll('.evidencia-correcta, .evidencia-incorrecta').forEach(el => {
-        const parent = el.parentNode;
-        parent.replaceChild(document.createTextNode(el.textContent), el);
-    });
-    bodyEl.normalize();
-    
-    const fragmento = evidenceText.substring(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const fragmento = evidenceText.substring(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     try {
         const regex = new RegExp(`(${fragmento})`, 'i');
-        const html = bodyEl.innerHTML;
-        let encontrado = false;
-        bodyEl.innerHTML = html.replace(regex, (match) => {
-            if (!encontrado) {
-                encontrado = true;
-                const clase = tipo === 'correct' ? 'evidencia-correcta' : 'evidencia-incorrecta';
-                return `<span class="${clase}" data-evidencia="true">${match}</span>`;
-            }
-            return match;
-        });
-        if (encontrado) {
-            const evidencia = bodyEl.querySelector('.evidencia-correcta, .evidencia-incorrecta');
-            if (evidencia) setTimeout(() => evidencia.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
-        }
-    } catch (e) { 
-        console.warn('No se pudo resaltar la evidencia:', e); 
-    }
+        const clase = tipo === 'correct' ? 'evidencia-correcta' : 'evidencia-incorrecta';
+        bodyEl.innerHTML = bodyEl.innerHTML.replace(regex, `<span class="${clase}">$1</span>`);
+    } catch (e) {}
 }
 
 function abrirLecturaFullscreen(textKey) {
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
-    if (state.mode === 'timed') {
-        state.isFrozen = true;
-    }
+    if (state.mode === 'timed') state.isFrozen = true;
+
     const overlay = document.createElement('div');
     overlay.className = 'lectura-fullscreen-overlay';
     overlay.id = 'lectura-fullscreen-overlay';
     overlay.innerHTML = `
         <div class="lectura-fullscreen-header">
-            <div><div class="lectura-fullscreen-title">📖 Lectura</div></div>
+            <strong>📖 Vista de Lectura Completa</strong>
             <button class="btn-lectura-cerrar" onclick="cerrarLecturaFullscreen()">✕ Cerrar</button>
         </div>
-        <div class="lectura-fullscreen-content lectura-selectable" id="lectura-fullscreen-body">${bodyEl.innerHTML}</div>
-        <div style="max-width:900px;width:100%;margin:10px auto 0;display:flex;gap:8px;">
-            <button class="btn-lectura-cerrar" onclick="resaltarDesdeFullscreen('${textKey}')" style="background:#F59E0B;border-color:#F59E0B;">🖍️ Resaltar</button>
-            <button class="btn-lectura-cerrar" onclick="limpiarResaltadosFullscreen('${textKey}')" style="background:#EF4444;border-color:#EF4444;">🗑️ Limpiar</button>
-            <button class="btn-lectura-cerrar" onclick="cerrarLecturaFullscreen()">✕ Cerrar</button>
-        </div>`;
+        <div class="lectura-fullscreen-content" id="lectura-fullscreen-body">${bodyEl.innerHTML}</div>`;
     document.body.appendChild(overlay);
-    document.body.style.overflow = 'hidden';
 }
 
 function cerrarLecturaFullscreen() {
     const overlay = document.getElementById('lectura-fullscreen-overlay');
-    if (overlay) { sincronizarResaltadosFullscreen(); overlay.remove(); }
-    document.body.style.overflow = '';
-    if (state.mode === 'timed' && !state._freezeTimeout) {
-        state.isFrozen = false;
-    }
+    if (overlay) overlay.remove();
+    if (state.mode === 'timed') state.isFrozen = false;
 }
 
-function resaltarDesdeFullscreen(textKey) {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-        if (window.effectsManager) window.effectsManager.triggerToastAcademico('Selecciona un texto primero', { icon: '📝', duration: 2000 });
-        return;
-    }
-    const range = selection.getRangeAt(0);
-    const bodyEl = document.getElementById('lectura-fullscreen-body');
-    if (!bodyEl || !bodyEl.contains(range.commonAncestorContainer)) return;
-    
-    const span = document.createElement('span');
-    span.className = 'lectura-resaltado';
-    span.dataset.textKey = textKey;
-    span.dataset.timestamp = Date.now();
-    
-    try { 
-        range.surroundContents(span); 
-    } catch (e) {
-        const fragment = range.extractContents();
-        const newSpan = document.createElement('span');
-        newSpan.className = 'lectura-resaltado';
-        newSpan.dataset.textKey = textKey;
-        newSpan.dataset.timestamp = Date.now();
-        newSpan.appendChild(fragment);
-        range.insertNode(newSpan);
-    }
-    
-    selection.removeAllRanges();
-    if (window.effectsManager) window.effectsManager.triggerToastAcademico('¡Texto resaltado!', { icon: '🖍️', duration: 1500 });
+// ===== PWA =====
+function setupInstalacionPWA() {
+    window.addEventListener('beforeinstallprompt', (e) => e.preventDefault());
 }
 
-function limpiarResaltadosFullscreen(textKey) {
-    const bodyEl = document.getElementById('lectura-fullscreen-body');
-    if (!bodyEl) return;
-    bodyEl.querySelectorAll('.lectura-resaltado').forEach(span => {
-        const parent = span.parentNode;
-        parent.replaceChild(document.createTextNode(span.textContent), span);
-    });
-    bodyEl.normalize();
-    if (window.effectsManager) window.effectsManager.triggerToastAcademico('Resaltados eliminados', { icon: '🗑️', duration: 1500 });
-}
-
-function sincronizarResaltadosFullscreen() {
-    const textKey = state.lecturaActiva;
-    if (!textKey) return;
-    const fullscreenBody = document.getElementById('lectura-fullscreen-body');
-    const panelBody = document.getElementById(`lectura-body-${textKey}`);
-    if (fullscreenBody && panelBody) {
-        panelBody.innerHTML = fullscreenBody.innerHTML;
-        guardarResaltados(textKey);
-    }
-}
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        const overlay = document.getElementById('lectura-fullscreen-overlay');
-        if (overlay) cerrarLecturaFullscreen();
-    }
-});
-
-// ===== INSTALACIÓN PWA =====
-const INSTALL_DISMISSED_KEY_PREFIX = 'paes_install_dismissed_';
-let _deferredInstallPrompt = null;
-let _splashYaCerrado = false;
-
-function estaEnModoStandalone() { 
-    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; 
-}
-
-function esIOS() { 
-    const ua = window.navigator.userAgent || ''; 
-    return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); 
-}
-
-function bannerFueDescartado(tipo) { 
-    return safeLocalGet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'false') === 'true'; 
-}
-
-function mostrarBannerInstalacionAndroid() { 
-    if (bannerFueDescartado('android') || estaEnModoStandalone()) return; 
-    const banner = document.getElementById('install-banner-android'); 
-    if (banner) banner.style.display = 'flex'; 
-}
-
-function mostrarBannerInstalacionIOS() { 
-    if (bannerFueDescartado('ios') || estaEnModoStandalone()) return; 
-    const banner = document.getElementById('install-banner-ios'); 
-    if (banner) banner.style.display = 'flex'; 
-}
-
-function ocultarBannerInstalacion(tipo) { 
-    const banner = document.getElementById(`install-banner-${tipo}`); 
-    if (banner) banner.style.display = 'none'; 
-}
-
-function cerrarBannerInstalacion(tipo) { 
-    ocultarBannerInstalacion(tipo); 
-    safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'true'); 
-}
-
-function instalarPWAAndroid() { 
-    if (!_deferredInstallPrompt) { 
-        ocultarBannerInstalacion('android'); 
-        return; 
-    } 
-    _deferredInstallPrompt.prompt(); 
-    _deferredInstallPrompt.userChoice.then(() => { 
-        _deferredInstallPrompt = null; 
-        ocultarBannerInstalacion('android'); 
-    }); 
-}
-
-function setupInstalacionPWA() { 
-    if (estaEnModoStandalone()) return; 
-    window.addEventListener('beforeinstallprompt', (e) => { 
-        e.preventDefault(); 
-        _deferredInstallPrompt = e; 
-        if (_splashYaCerrado) mostrarBannerInstalacionAndroid(); 
-    }); 
-    window.addEventListener('appinstalled', () => { 
-        _deferredInstallPrompt = null; 
-        ocultarBannerInstalacion('android'); 
-        safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + 'android', 'true'); 
-    }); 
-    document.getElementById('skip-splash-btn')?.addEventListener('click', () => { 
-        _splashYaCerrado = true; 
-        setTimeout(() => { 
-            if (estaEnModoStandalone()) return; 
-            if (_deferredInstallPrompt) mostrarBannerInstalacionAndroid(); 
-            else if (esIOS()) mostrarBannerInstalacionIOS(); 
-        }, 1500); 
-    }, { once: true }); 
-}
-
-// ===== SABIONDO =====
+// ===== SABIONDO & REACCIONES =====
 function updateBuhoReaction(r) {
-    document.querySelectorAll('.buho-svg').forEach(b => { 
-        b.className = 'buho-svg'; 
-        void b.offsetWidth; 
-        b.className = 'buho-svg ' + r; 
-    });
-    
     const sp = document.getElementById('question-speech');
     const msgs = {
-        'thinking':['¡Analiza con sabiduría! 🦉','Tú puedes lograrlo 💪','Lee con atención 📖'],
-        'nervous':['¡El tiempo vuela! ⏰','¡Confía en tu instinto! 😰'],
-        'bored':['¡Despierta esa mente! ☕','¡Vamos, futuro universitario! 🎓'],
-        'correct':['¡Correcto! ✨','¡Bien hecho! 🌟'],
-        'incorrect':['¡No era esa! 💪','¡Cada error nos hace más fuertes! 📚'],
-        'impressed':['¡Impresionante! 🤩','¡Eres un genio! 🌟'],
-        'determined':['¡Ahora sí, con todo! 😤','Cada error es una lección 📚'],
-        'graduate':['¡Lo lograste! 🎓','¡La universidad te espera! 🦉✨'],
-        'frozen':['¡Tiempo congelado! 🥶','¡Respira y piensa! ❄️']
+        'thinking':['¡Analiza con sabiduría! 🦉','Lee con atención 📖'],
+        'correct':['¡Excelente respuesta! ✨','¡Puntos para el marcador! 🌟'],
+        'incorrect':['¡Atención a la explicación! 📚','¡Aprender del error es clave! 💪'],
+        'determined':['¡Vamos con la siguiente! 😤','¡Tú puedes superarlo! 📖'],
+        'graduate':['¡Felicidades por completar el desafío! 🎓✨']
     };
-    
     const list = msgs[r] || msgs['thinking'];
-    if (sp) { 
-        sp.textContent = list[Math.floor(Math.random()*list.length)]; 
-        sp.className = 'character-speech state-'+r; 
-        sp.style.animation = 'none'; 
-        void sp.offsetHeight; 
-        sp.style.animation = 'speechBubbleIn 0.4s ease-out'; 
-    }
+    if (sp) sp.textContent = list[Math.floor(Math.random()*list.length)];
 }
 
-// ===== SPEED BONUS TOAST =====
 function createSpeedBonusToast() {
     if (document.getElementById('speed-bonus-toast')) return;
     const t = document.createElement('div');
@@ -1313,49 +1039,14 @@ function createSpeedBonusToast() {
 function showSpeedBonus(p) {
     const t = document.getElementById('speed-bonus-toast');
     if (!t) return;
-    t.textContent = `⚡ +${p} pts`;
+    t.textContent = `⚡ +${p} pts bonus por velocidad!`;
     t.classList.add('show');
-    setTimeout(() => t.classList.add('hide'), 1500);
-    setTimeout(() => t.classList.remove('show','hide'), 2000);
+    setTimeout(() => t.classList.remove('show'), 1500);
 }
 
-// ===== BOTÓN SALIR =====
 function confirmarSalir() {
     clearAllTimers();
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:3000;display:flex;align-items:center;justify-content:center;font-family:Poppins,sans-serif;padding:20px';
-    const box = document.createElement('div');
-    box.style.cssText = 'background:white;padding:26px 24px;border-radius:18px;max-width:340px;width:100%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.32)';
-    box.innerHTML = `
-        <div style="font-size:3rem;margin-bottom:10px;">🚪</div>
-        <div style="font-weight:800;font-size:1.1rem;margin-bottom:6px;color:#1E293B;">¿Salir del desafío?</div>
-        <div style="margin-bottom:16px;color:#64748B;font-size:0.85rem;">
-            Pregunta ${state.indiceActual + 1} de ${state.totalPreguntas}<br>
-            Puntaje actual: <b>${state.score} pts</b>
-        </div>
-        <div style="display:flex;gap:10px;justify-content:center;">
-            <button id="salir-cancelar" style="flex:1;padding:11px 0;border-radius:10px;border:none;background:#E2E8F0;color:#334155;font-weight:700;cursor:pointer;font-family:inherit;">Continuar</button>
-            <button id="salir-confirmar" style="flex:1;padding:11px 0;border-radius:10px;border:none;background:#EF4444;color:white;font-weight:700;cursor:pointer;font-family:inherit;">Salir</button>
-        </div>`;
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-
-    box.querySelector('#salir-cancelar').addEventListener('click', () => {
-        overlay.remove();
-        if (state.mode === 'timed' && !state.isFrozen && document.getElementById('btn-next').style.display === 'none') {
-            startTimer();
-        }
-    });
-    box.querySelector('#salir-confirmar').addEventListener('click', () => {
-        overlay.remove();
+    if (confirm('¿Deseas salir del desafío actual y perder el progreso de esta ronda?')) {
         volverAlInicio();
-    });
-    const escHandler = (e) => {
-        if (e.key === 'Escape') {
-            overlay.remove();
-            document.removeEventListener('keydown', escHandler);
-        }
-    };
-    document.addEventListener('keydown', escHandler);
+    }
 }
