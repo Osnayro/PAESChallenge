@@ -1,12 +1,11 @@
 
-
-
 /**
  * ============================================================
- * PAES Challenge Engine v5.2.3 — Token QR + Google Sheets (Optimizado)
+ * PAES Challenge Engine v5.2.4 — Token QR + Google Sheets
  * Autenticación por token de un solo uso + Nombre/PIN
  * Preguntas locales + Leaderboard en Google Sheets
  * SIN 50/50
+ * Corrección de acceso a variables globales de bancos
  * ============================================================
  */
 
@@ -58,21 +57,13 @@ const materiasDisponibles = [
 
 // ===== UTILIDADES =====
 function safeLocalGet(key, fallback) {
-    try { 
-        const raw = localStorage.getItem(key); 
-        return raw !== null ? raw : fallback; 
-    } catch (e) { 
-        return fallback; 
-    }
+    try { const raw = localStorage.getItem(key); return raw !== null ? raw : fallback; }
+    catch (e) { return fallback; }
 }
 
 function safeLocalSet(key, value) {
-    try { 
-        localStorage.setItem(key, value); 
-        return true; 
-    } catch (e) { 
-        return false; 
-    }
+    try { localStorage.setItem(key, value); return true; }
+    catch (e) { return false; }
 }
 
 function shuffleArray(array) {
@@ -120,6 +111,14 @@ function playSound(type) {
 
 function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function obtenerVariableGlobal(nombreVariable) {
+    try {
+        return (0, eval)(nombreVariable);
+    } catch (e) {
+        return [];
+    }
 }
 
 // ===== INICIALIZACIÓN =====
@@ -190,6 +189,11 @@ function mostrarPantallaBloqueoQR(mensaje = '') {
     }
 }
 
+function ocultarPantallasBloqueo() {
+    const qrScreen = document.getElementById('qr-lock-screen');
+    if (qrScreen) qrScreen.style.display = 'none';
+}
+
 // ===== PANTALLA INICIAL =====
 function mostrarPantallaInicial() {
     const idUsuario = safeLocalGet('paes_id_usuario', null);
@@ -203,7 +207,7 @@ function mostrarPantallaInicial() {
     }
 }
 
-// ===== AUTENTICACIÓN (NOMBRE + PIN) =====
+// ===== AUTENTICACIÓN =====
 function setupPantallaRegistro() {
     const nameInput = document.getElementById('lock-name-input');
     const pinInput = document.getElementById('lock-pin-input');
@@ -225,11 +229,6 @@ function mostrarPantallaRegistro() {
 function ocultarPantallaRegistro() {
     const lock = document.getElementById('lock-screen');
     if (lock) lock.style.display = 'none';
-}
-
-function ocultarPantallasBloqueo() {
-    const qrScreen = document.getElementById('qr-lock-screen');
-    if (qrScreen) qrScreen.style.display = 'none';
 }
 
 async function intentarIngresoInicial() {
@@ -312,9 +311,9 @@ function mostrarPantallaMaterias() {
 
 function seleccionarMateria(materia) {
     const variable = materia.variable;
-    const banco = typeof window[variable] !== 'undefined' ? window[variable] : [];
+    const banco = obtenerVariableGlobal(variable);
 
-    if (banco.length === 0) {
+    if (!Array.isArray(banco) || banco.length === 0) {
         alert('No hay preguntas disponibles para esta materia.');
         return;
     }
@@ -335,7 +334,7 @@ function seleccionarMateria(materia) {
     state.powerupsUsedThisLevel = false;
     state.isFrozen = false;
     state.desafioStartTime = Date.now();
-    
+
     clearAllTimers();
 
     const materiaInfo = materiasDisponibles.find(m => m.id === materia.id);
@@ -365,17 +364,17 @@ function loadQuestion() {
     const q = state.preguntaActual;
 
     ['options-grid','matching-container','drag-container','slider-container'].forEach(id => {
-        const el = document.getElementById(id); 
+        const el = document.getElementById(id);
         if (el) { el.innerHTML = ''; el.style.display = 'none'; }
     });
-    
-    const fb = document.getElementById('feedback-box'); 
+
+    const fb = document.getElementById('feedback-box');
     if (fb) { fb.className = 'feedback-box'; fb.innerHTML = ''; }
-    
-    const bn = document.getElementById('btn-next'); 
+
+    const bn = document.getElementById('btn-next');
     if (bn) bn.style.display = 'none';
-    
-    const qi = document.getElementById('question-image'); 
+
+    const qi = document.getElementById('question-image');
     if (qi) qi.style.display = 'none';
 
     const lecturaContainer = document.getElementById('lectura-container');
@@ -440,20 +439,20 @@ function loadQuestion() {
 
 // ===== FUNCIONES DE PREGUNTAS =====
 function loadMultipleChoice(q) {
-    const grid = document.getElementById('options-grid'); 
+    const grid = document.getElementById('options-grid');
     if (!grid) return;
     grid.style.display = 'flex';
     const opciones = Array.isArray(q.options) ? q.options : [];
     const indices = opciones.map((_, i) => i);
     const shuffled = shuffleArray(indices);
     q._shuffledIndices = shuffled;
-    
+
     shuffled.forEach((orig) => {
         const btn = document.createElement('button');
         btn.className = 'option-btn';
         btn.innerHTML = opciones[orig];
         btn.dataset.originalIndex = orig;
-        
+
         if (window.katex) {
             window.katex.renderMathInElement(btn, {
                 delimiters: [{left: '$', right: '$', display: false}],
@@ -467,7 +466,7 @@ function loadMultipleChoice(q) {
 }
 
 function loadMatching(q) {
-    const mc = document.getElementById('matching-container'); 
+    const mc = document.getElementById('matching-container');
     if (!mc) return;
     mc.style.display = 'grid';
     const pairs = q.pairs || [];
@@ -509,21 +508,21 @@ function loadMatching(q) {
 }
 
 function loadSlider(q) {
-    const sc = document.getElementById('slider-container'); 
+    const sc = document.getElementById('slider-container');
     if (!sc) return;
     sc.style.display = 'block';
-    const min = parseFloat(q.min || 0); 
+    const min = parseFloat(q.min || 0);
     const max = parseFloat(q.max || 100);
     const vd = document.createElement('div'); vd.className = 'slider-value'; vd.textContent = min; vd.id = 'slider-value-display';
     const tr = document.createElement('div'); tr.className = 'slider-track';
     const fl = document.createElement('div'); fl.className = 'slider-fill'; fl.style.width = '0%';
     const inp = document.createElement('input'); inp.type = 'range'; inp.className = 'slider-input'; inp.min = min; inp.max = max; inp.step = '0.1'; inp.value = min;
-    
-    inp.addEventListener('input', () => { 
-        fl.style.width = `${((inp.value-min)/(max-min))*100}%`; 
-        vd.textContent = inp.value; 
+
+    inp.addEventListener('input', () => {
+        fl.style.width = `${((inp.value-min)/(max-min))*100}%`;
+        vd.textContent = inp.value;
     });
-    
+
     tr.appendChild(fl); tr.appendChild(inp);
     const sb = document.createElement('button'); sb.className = 'main-btn'; sb.textContent = 'Confirmar ✅';
     sb.addEventListener('click', () => {
@@ -536,11 +535,11 @@ function loadSlider(q) {
 }
 
 function loadDrag(q) {
-    const dc = document.getElementById('drag-container'); 
+    const dc = document.getElementById('drag-container');
     if (!dc) return;
     dc.style.display = 'flex';
     const items = q.items || [];
-    
+
     items.forEach((item, idx) => {
         const dz = document.createElement('div'); dz.className = 'drop-zone'; dz.textContent = `${idx+1}. Soltar aquí`; dz.dataset.index = idx;
         dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
@@ -581,7 +580,7 @@ function checkMultipleAnswer(oi, q) {
     if (window.effectsManager) window.effectsManager.ensureAudio();
     const opts = document.querySelectorAll('.option-btn');
     opts.forEach(b => b.disabled = true);
-    
+
     clearAllTimers();
     const correctIndex = q.correct;
     const isCorrect = parseInt(oi) === parseInt(correctIndex);
@@ -591,7 +590,7 @@ function checkMultipleAnswer(oi, q) {
 function evaluarRespuesta(isCorrect, q) {
     const tiempo = (Date.now() - state.questionStartTime) / 1000;
     state.totalPreguntasRespondidas++;
-    
+
     if (isCorrect) {
         let pts = q.points || 100;
         state.streak++;
@@ -634,7 +633,7 @@ function evaluarRespuesta(isCorrect, q) {
 
     const bn = document.getElementById('btn-next');
     if (bn) bn.style.display = 'block';
-    
+
     state.indiceActual++;
     if (state.indiceActual < state.totalPreguntas) {
         state.preguntaActual = state.preguntas[state.indiceActual];
@@ -791,10 +790,10 @@ function usePowerup(type) {
     state.powerupsUsedThisLevel = true;
     updatePowerupButtons();
     playSound('powerup');
-    
+
     const btn = document.getElementById(`powerup-${type}`);
     if (btn) { btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 300); }
-    
+
     switch (type) {
         case 'time':
             if (state.mode === 'timed') { state.timer += 15; updateTimerDisplay(); }
@@ -848,9 +847,9 @@ function startTimer() {
     clearAllTimers();
     state.timer = materiasDisponibles.find(m => m.id === state.materiaActual)?.timerDefault || 60;
     updateTimerDisplay();
-    const td = document.getElementById('timer-display'); 
+    const td = document.getElementById('timer-display');
     if (td) td.classList.remove('warning');
-    
+
     state.timerInterval = setInterval(() => {
         if (state.isFrozen) return;
         state.timer--;
@@ -883,24 +882,20 @@ function updateScore() {
     setTimeout(() => b.classList.remove('pop'), 300);
     if (window.effectsManager?.triggerScoreBadgeFlash) window.effectsManager.triggerScoreBadgeFlash();
 }
-
 function updateStreak() {
     const s = document.getElementById('streak-display');
     if (s) s.textContent = `🔥 ${state.streak}`;
 }
-
 function updateProgress() {
     const p = document.getElementById('progress-fill');
     if (p) p.style.width = `${(state.indiceActual / state.totalPreguntas) * 100}%`;
 }
-
 function showFeedback(msg, type) {
     const fb = document.getElementById('feedback-box');
     if (!fb) return;
     fb.textContent = msg;
     fb.className = `feedback-box ${type}`;
 }
-
 function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const screen = document.getElementById(id);
@@ -911,10 +906,8 @@ function showScreen(id) {
     }
     if (id === 'screen-leaderboard') loadLeaderboard();
     if (id === 'screen-badges') loadBadges();
-    // No llamar a mostrarPantallaMaterias aquí para evitar recursión
     if (typeof injectBuhoSVGs === 'function') setTimeout(injectBuhoSVGs, 100);
 }
-
 function selectMode(m) {
     state.mode = m;
     document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
@@ -942,10 +935,8 @@ function checkBadges() {
         mostrarToast('¡Velocista!', '⚡'); saveBadges();
     }
 }
-
 function getBadgeIcon(b) { const icons = { perfectScore:'💯', speedDemon:'⚡', streaker:'🔥', paesPro:'🏆', noPowerups:'💪' }; return icons[b] || '🏅'; }
 function getBadgeName(b) { const names = { perfectScore:'Puntaje Perfecto', speedDemon:'Velocista', streaker:'Rachador', paesPro:'PAES Pro', noPowerups:'Poder Natural' }; return names[b] || b; }
-
 function loadBadges() {
     const saved = safeLocalGet('paes_badges_v4', null);
     if (saved) { try { state.badges = { ...state.badges, ...JSON.parse(saved) }; } catch(e) {} }
@@ -959,7 +950,6 @@ function loadBadges() {
         g.appendChild(e);
     }
 }
-
 function saveBadges() { safeLocalSet('paes_badges_v4', JSON.stringify(state.badges)); }
 
 // ===== LECTURA Y RESALTADO =====
@@ -972,15 +962,12 @@ function resaltarSeleccion(textKey) {
     const range = selection.getRangeAt(0);
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl || !bodyEl.contains(range.commonAncestorContainer)) return;
-    
     const span = document.createElement('span');
     span.className = 'lectura-resaltado';
     span.dataset.textKey = textKey;
     span.dataset.timestamp = Date.now();
-    
-    try { 
-        range.surroundContents(span); 
-    } catch (e) {
+    try { range.surroundContents(span); }
+    catch (e) {
         const fragment = range.extractContents();
         const newSpan = document.createElement('span');
         newSpan.className = 'lectura-resaltado';
@@ -989,12 +976,10 @@ function resaltarSeleccion(textKey) {
         newSpan.appendChild(fragment);
         range.insertNode(newSpan);
     }
-    
     selection.removeAllRanges();
     guardarResaltados(textKey);
     if (window.effectsManager) window.effectsManager.triggerToastAcademico('¡Texto resaltado!', { icon: '🖍️', duration: 1500 });
 }
-
 function guardarResaltados(textKey) {
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
@@ -1007,12 +992,10 @@ function guardarResaltados(textKey) {
     const filtrados = resaltados.filter(r => (ahora - r.timestamp) < treintaDias);
     safeLocalSet(`paes_resaltados_${textKey}`, JSON.stringify(filtrados));
 }
-
 function aplicarResaltadosGuardados(textKey, resaltados) {
     if (!resaltados || resaltados.length === 0) return;
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
-    
     resaltados.forEach(res => {
         const regex = new RegExp(`(${escapeRegExp(res.texto)})`, 'g');
         const html = bodyEl.innerHTML;
@@ -1026,7 +1009,6 @@ function aplicarResaltadosGuardados(textKey, resaltados) {
         });
     });
 }
-
 function limpiarResaltados(textKey) {
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
@@ -1038,14 +1020,12 @@ function limpiarResaltados(textKey) {
     safeLocalSet(`paes_resaltados_${textKey}`, '[]');
     if (window.effectsManager) window.effectsManager.triggerToastAcademico('Resaltados eliminados', { icon: '🗑️', duration: 1500 });
 }
-
 function limpiarTodosResaltados() {
     if (typeof paesTexts === 'undefined') return;
     Object.keys(paesTexts).forEach(key => {
         safeLocalSet(`paes_resaltados_${key}`, '[]');
     });
 }
-
 function limpiarResaltadosAntiguos() {
     if (typeof paesTexts === 'undefined') return;
     const ahora = Date.now();
@@ -1060,18 +1040,15 @@ function limpiarResaltadosAntiguos() {
         }
     });
 }
-
 function resaltarEvidenciaEnLectura(textKey, evidenceText, tipo) {
     if (!textKey || !evidenceText) return;
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
-    
     bodyEl.querySelectorAll('.evidencia-correcta, .evidencia-incorrecta').forEach(el => {
         const parent = el.parentNode;
         parent.replaceChild(document.createTextNode(el.textContent), el);
     });
     bodyEl.normalize();
-    
     const fragmento = evidenceText.substring(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     try {
         const regex = new RegExp(`(${fragmento})`, 'i');
@@ -1089,17 +1066,12 @@ function resaltarEvidenciaEnLectura(textKey, evidenceText, tipo) {
             const evidencia = bodyEl.querySelector('.evidencia-correcta, .evidencia-incorrecta');
             if (evidencia) setTimeout(() => evidencia.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
         }
-    } catch (e) { 
-        console.warn('No se pudo resaltar la evidencia:', e); 
-    }
+    } catch (e) { console.warn('No se pudo resaltar la evidencia:', e); }
 }
-
 function abrirLecturaFullscreen(textKey) {
     const bodyEl = document.getElementById(`lectura-body-${textKey}`);
     if (!bodyEl) return;
-    if (state.mode === 'timed') {
-        state.isFrozen = true;
-    }
+    if (state.mode === 'timed') state.isFrozen = true;
     const overlay = document.createElement('div');
     overlay.className = 'lectura-fullscreen-overlay';
     overlay.id = 'lectura-fullscreen-overlay';
@@ -1117,16 +1089,12 @@ function abrirLecturaFullscreen(textKey) {
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
 }
-
 function cerrarLecturaFullscreen() {
     const overlay = document.getElementById('lectura-fullscreen-overlay');
     if (overlay) { sincronizarResaltadosFullscreen(); overlay.remove(); }
     document.body.style.overflow = '';
-    if (state.mode === 'timed' && !state._freezeTimeout) {
-        state.isFrozen = false;
-    }
+    if (state.mode === 'timed' && !state._freezeTimeout) state.isFrozen = false;
 }
-
 function resaltarDesdeFullscreen(textKey) {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -1136,15 +1104,12 @@ function resaltarDesdeFullscreen(textKey) {
     const range = selection.getRangeAt(0);
     const bodyEl = document.getElementById('lectura-fullscreen-body');
     if (!bodyEl || !bodyEl.contains(range.commonAncestorContainer)) return;
-    
     const span = document.createElement('span');
     span.className = 'lectura-resaltado';
     span.dataset.textKey = textKey;
     span.dataset.timestamp = Date.now();
-    
-    try { 
-        range.surroundContents(span); 
-    } catch (e) {
+    try { range.surroundContents(span); }
+    catch (e) {
         const fragment = range.extractContents();
         const newSpan = document.createElement('span');
         newSpan.className = 'lectura-resaltado';
@@ -1153,11 +1118,9 @@ function resaltarDesdeFullscreen(textKey) {
         newSpan.appendChild(fragment);
         range.insertNode(newSpan);
     }
-    
     selection.removeAllRanges();
     if (window.effectsManager) window.effectsManager.triggerToastAcademico('¡Texto resaltado!', { icon: '🖍️', duration: 1500 });
 }
-
 function limpiarResaltadosFullscreen(textKey) {
     const bodyEl = document.getElementById('lectura-fullscreen-body');
     if (!bodyEl) return;
@@ -1168,7 +1131,6 @@ function limpiarResaltadosFullscreen(textKey) {
     bodyEl.normalize();
     if (window.effectsManager) window.effectsManager.triggerToastAcademico('Resaltados eliminados', { icon: '🗑️', duration: 1500 });
 }
-
 function sincronizarResaltadosFullscreen() {
     const textKey = state.lecturaActiva;
     if (!textKey) return;
@@ -1179,7 +1141,6 @@ function sincronizarResaltadosFullscreen() {
         guardarResaltados(textKey);
     }
 }
-
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         const overlay = document.getElementById('lectura-fullscreen-overlay');
@@ -1191,84 +1152,19 @@ document.addEventListener('keydown', function(e) {
 const INSTALL_DISMISSED_KEY_PREFIX = 'paes_install_dismissed_';
 let _deferredInstallPrompt = null;
 let _splashYaCerrado = false;
-
-function estaEnModoStandalone() { 
-    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; 
-}
-
-function esIOS() { 
-    const ua = window.navigator.userAgent || ''; 
-    return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); 
-}
-
-function bannerFueDescartado(tipo) { 
-    return safeLocalGet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'false') === 'true'; 
-}
-
-function mostrarBannerInstalacionAndroid() { 
-    if (bannerFueDescartado('android') || estaEnModoStandalone()) return; 
-    const banner = document.getElementById('install-banner-android'); 
-    if (banner) banner.style.display = 'flex'; 
-}
-
-function mostrarBannerInstalacionIOS() { 
-    if (bannerFueDescartado('ios') || estaEnModoStandalone()) return; 
-    const banner = document.getElementById('install-banner-ios'); 
-    if (banner) banner.style.display = 'flex'; 
-}
-
-function ocultarBannerInstalacion(tipo) { 
-    const banner = document.getElementById(`install-banner-${tipo}`); 
-    if (banner) banner.style.display = 'none'; 
-}
-
-function cerrarBannerInstalacion(tipo) { 
-    ocultarBannerInstalacion(tipo); 
-    safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'true'); 
-}
-
-function instalarPWAAndroid() { 
-    if (!_deferredInstallPrompt) { 
-        ocultarBannerInstalacion('android'); 
-        return; 
-    } 
-    _deferredInstallPrompt.prompt(); 
-    _deferredInstallPrompt.userChoice.then(() => { 
-        _deferredInstallPrompt = null; 
-        ocultarBannerInstalacion('android'); 
-    }); 
-}
-
-function setupInstalacionPWA() { 
-    if (estaEnModoStandalone()) return; 
-    window.addEventListener('beforeinstallprompt', (e) => { 
-        e.preventDefault(); 
-        _deferredInstallPrompt = e; 
-        if (_splashYaCerrado) mostrarBannerInstalacionAndroid(); 
-    }); 
-    window.addEventListener('appinstalled', () => { 
-        _deferredInstallPrompt = null; 
-        ocultarBannerInstalacion('android'); 
-        safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + 'android', 'true'); 
-    }); 
-    document.getElementById('skip-splash-btn')?.addEventListener('click', () => { 
-        _splashYaCerrado = true; 
-        setTimeout(() => { 
-            if (estaEnModoStandalone()) return; 
-            if (_deferredInstallPrompt) mostrarBannerInstalacionAndroid(); 
-            else if (esIOS()) mostrarBannerInstalacionIOS(); 
-        }, 1500); 
-    }, { once: true }); 
-}
+function estaEnModoStandalone() { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; }
+function esIOS() { const ua = window.navigator.userAgent || ''; return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+function bannerFueDescartado(tipo) { return safeLocalGet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'false') === 'true'; }
+function mostrarBannerInstalacionAndroid() { if (bannerFueDescartado('android') || estaEnModoStandalone()) return; const banner = document.getElementById('install-banner-android'); if (banner) banner.style.display = 'flex'; }
+function mostrarBannerInstalacionIOS() { if (bannerFueDescartado('ios') || estaEnModoStandalone()) return; const banner = document.getElementById('install-banner-ios'); if (banner) banner.style.display = 'flex'; }
+function ocultarBannerInstalacion(tipo) { const banner = document.getElementById(`install-banner-${tipo}`); if (banner) banner.style.display = 'none'; }
+function cerrarBannerInstalacion(tipo) { ocultarBannerInstalacion(tipo); safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + tipo, 'true'); }
+function instalarPWAAndroid() { if (!_deferredInstallPrompt) { ocultarBannerInstalacion('android'); return; } _deferredInstallPrompt.prompt(); _deferredInstallPrompt.userChoice.then(() => { _deferredInstallPrompt = null; ocultarBannerInstalacion('android'); }); }
+function setupInstalacionPWA() { if (estaEnModoStandalone()) return; window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); _deferredInstallPrompt = e; if (_splashYaCerrado) mostrarBannerInstalacionAndroid(); }); window.addEventListener('appinstalled', () => { _deferredInstallPrompt = null; ocultarBannerInstalacion('android'); safeLocalSet(INSTALL_DISMISSED_KEY_PREFIX + 'android', 'true'); }); document.getElementById('skip-splash-btn')?.addEventListener('click', () => { _splashYaCerrado = true; setTimeout(() => { if (estaEnModoStandalone()) return; if (_deferredInstallPrompt) mostrarBannerInstalacionAndroid(); else if (esIOS()) mostrarBannerInstalacionIOS(); }, 1500); }, { once: true }); }
 
 // ===== SABIONDO =====
 function updateBuhoReaction(r) {
-    document.querySelectorAll('.buho-svg').forEach(b => { 
-        b.className = 'buho-svg'; 
-        void b.offsetWidth; 
-        b.className = 'buho-svg ' + r; 
-    });
-    
+    document.querySelectorAll('.buho-svg').forEach(b => { b.className = 'buho-svg'; void b.offsetWidth; b.className = 'buho-svg ' + r; });
     const sp = document.getElementById('question-speech');
     const msgs = {
         'thinking':['¡Analiza con sabiduría! 🦉','Tú puedes lograrlo 💪','Lee con atención 📖'],
@@ -1281,15 +1177,8 @@ function updateBuhoReaction(r) {
         'graduate':['¡Lo lograste! 🎓','¡La universidad te espera! 🦉✨'],
         'frozen':['¡Tiempo congelado! 🥶','¡Respira y piensa! ❄️']
     };
-    
     const list = msgs[r] || msgs['thinking'];
-    if (sp) { 
-        sp.textContent = list[Math.floor(Math.random()*list.length)]; 
-        sp.className = 'character-speech state-'+r; 
-        sp.style.animation = 'none'; 
-        void sp.offsetHeight; 
-        sp.style.animation = 'speechBubbleIn 0.4s ease-out'; 
-    }
+    if (sp) { sp.textContent = list[Math.floor(Math.random()*list.length)]; sp.className = 'character-speech state-'+r; sp.style.animation='none'; void sp.offsetHeight; sp.style.animation='speechBubbleIn 0.4s ease-out'; }
 }
 
 // ===== SPEED BONUS TOAST =====
@@ -1300,7 +1189,6 @@ function createSpeedBonusToast() {
     t.id = 'speed-bonus-toast';
     document.body.appendChild(t);
 }
-
 function showSpeedBonus(p) {
     const t = document.getElementById('speed-bonus-toast');
     if (!t) return;
@@ -1313,7 +1201,6 @@ function showSpeedBonus(p) {
 // ===== BOTÓN SALIR =====
 function confirmarSalir() {
     clearAllTimers();
-
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:3000;display:flex;align-items:center;justify-content:center;font-family:Poppins,sans-serif;padding:20px';
     const box = document.createElement('div');
@@ -1350,3 +1237,4 @@ function confirmarSalir() {
     };
     document.addEventListener('keydown', escHandler);
 }
+ 
