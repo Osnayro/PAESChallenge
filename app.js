@@ -348,19 +348,25 @@ const PAESApp = (() => {
 
         // 1. Enviar Usuario y PIN a BD_Usuarios y esperar confirmación real.
         //
-        // IMPORTANTE: para que esto valide el PIN de verdad, el Apps Script
-        // debe responder con un JSON legible (p. ej. {"ok": true} o
-        // {"ok": false, "mensaje": "PIN incorrecto"}) y debe tener CORS
-        // habilitado. Mientras el fetch use mode:"no-cors" la respuesta es
-        // opaca y no se puede leer, así que aquí se asume éxito si la
-        // petición no lanza error de red. Actualiza SCRIPT_URL y el modo de
-        // fetch en tu despliegue de Apps Script para validación estricta.
+        // Usamos Content-Type: text/plain (en vez de application/json) para
+        // que el navegador NO dispare una petición preflight (OPTIONS), que
+        // los Web Apps de Apps Script no responden por defecto y hace que el
+        // fetch falle con un error de red aunque el servidor esté disponible.
+        // El body sigue siendo JSON como texto: Apps Script lo lee igual
+        // desde e.postData.contents sin importar el header.
+        //
+        // Para validar el PIN de verdad, el doPost() de tu Apps Script debe
+        // devolver JSON, por ejemplo:
+        //   return ContentService.createTextOutput(JSON.stringify({ok:true}))
+        //     .setMimeType(ContentService.MimeType.JSON);
+        // o para un PIN incorrecto:
+        //   {"ok": false, "mensaje": "PIN incorrecto para ese apodo"}
         async registrarOAutenticarUsuario(nombre, pin) {
             try {
                 const response = await fetch(this.SCRIPT_URL, {
                     method: "POST",
                     headers: {
-                        "Content-Type": "application/json",
+                        "Content-Type": "text/plain;charset=utf-8",
                     },
                     body: JSON.stringify({
                         action: "login_or_register",
