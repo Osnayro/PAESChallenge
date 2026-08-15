@@ -328,88 +328,6 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
     .install-banner-text span { font-size: 0.68rem; }
 }
 
-/* ================================================================
-   PANTALLA DE REGISTRO INICIAL (LOCK SCREEN)
-   ================================================================ */
-#lock-screen {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: linear-gradient(135deg, #1E3A63 0%, #3B2F63 100%);
-    z-index: 1001;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    box-sizing: border-box;
-}
-
-.lock-card {
-    background: var(--blanco);
-    width: 100%;
-    max-width: 360px;
-    border-radius: 24px;
-    padding: 32px 26px;
-    text-align: center;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-    animation: fadeIn 0.5s ease-out;
-}
-
-.lock-buho-img {
-    width: 88px;
-    height: 88px;
-    object-fit: contain;
-    margin-bottom: 8px;
-    border-radius: 50%;
-    background: #F5F3FF;
-    padding: 6px;
-    box-shadow: 0 4px 14px rgba(139, 92, 246, 0.3);
-}
-
-.lock-title {
-    font-size: 1.4rem;
-    font-weight: 800;
-    color: #1E3A63;
-    margin: 6px 0 4px;
-}
-
-.lock-subtitle {
-    font-size: 0.85rem;
-    color: #64748B;
-    margin-bottom: 20px;
-    line-height: 1.4;
-}
-
-.lock-input {
-    width: 100%;
-    padding: 12px 14px;
-    border-radius: 12px;
-    border: 1.5px solid #CBD5E1;
-    margin-bottom: 12px;
-    font-family: 'Poppins', sans-serif;
-    font-size: 1rem;
-    box-sizing: border-box;
-}
-
-.lock-input:focus {
-    outline: none;
-    border-color: #8B5CF6;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
-}
-
-.lock-error {
-    background: #FEF2F2;
-    color: #DC2626;
-    border-left: 3px solid #EF4444;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    margin-bottom: 12px;
-    text-align: left;
-}
-
 /* ===== APP CARD ===== */
 .app-card {
     background: var(--blanco);
@@ -456,8 +374,10 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
     flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
 }
 
 .progress-container {
@@ -506,6 +426,35 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
 }
 
 .streak-display.on-fire { animation: streakFire 0.5s infinite ease-in-out; }
+
+/* Indicador de Escudos de Racha */
+.shield-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #0284C7;
+    color: #FFFFFF;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease, background-color 0.3s ease;
+}
+
+.shield-display:hover {
+    transform: scale(1.05);
+}
+
+.shield-pop {
+    animation: shieldPulse 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes shieldPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); background-color: #38BDF8; }
+    100% { transform: scale(1); }
+}
 
 .timer-display {
     background: var(--azul-oscuro);
@@ -954,3 +903,109 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
 
 @media (aspect-ratio > 9/16) { #splash-screen { background-size: cover; background-position: center top; } }
 @media (min-aspect-ratio: 1/1) { #splash-screen { background-size: contain; background-position: center; background-color: #1E3A63; } }
+
+/* ================================================================
+   MODAL DE REGISTRO / AUTENTICACIÓN (NICKNAME Y PIN)
+   ================================================================ */
+
+.nickname-overlay {
+    display: none; /* oculto por defecto: se activa explícitamente vía JS con .active */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    z-index: 2500;
+}
+
+.nickname-overlay.active {
+    display: flex;
+}
+
+.nickname-card {
+    background: #FFFFFF;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 400px;
+    padding: 28px 24px;
+    text-align: center;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+}
+
+.nickname-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #1E293B;
+    margin-bottom: 6px;
+}
+
+.nickname-subtitle {
+    font-size: 0.85rem;
+    color: #64748B;
+    margin-bottom: 20px;
+    line-height: 1.4;
+}
+
+.nickname-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+.nickname-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.nickname-input {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: 2px solid #CBD5E1;
+    border-radius: 12px;
+    outline: none;
+    transition: all 0.2s ease;
+    background: #F8FAFC;
+    color: #1E293B;
+}
+
+.nickname-input:focus {
+    border-color: #3B82F6;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+}
+
+.nickname-error {
+    font-size: 0.75rem;
+    color: #EF4444;
+    font-weight: 600;
+    margin-top: 4px;
+    display: none;
+}
+
+.nickname-error.active {
+    display: block;
+}
+
+.nickname-input.input-error {
+    border-color: #EF4444;
+}
+
+#btn-save-nickname:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    box-shadow: none;
+}
