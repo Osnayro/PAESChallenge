@@ -428,6 +428,38 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
     display: block;
 }
 
+/* ================================================================
+   SELECTOR DE MODALIDAD DE JUEGO (MATERIA INDIVIDUAL O COMPLETO)
+   ================================================================ */
+#materia-selector {
+    width: 100%;
+    margin: 8px 0;
+}
+
+#materia-selector label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 700;
+    color: var(--azul-oscuro);
+    text-align: center;
+}
+
+#materia-opciones {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+#materia-opciones .mode-card {
+    padding: 10px 6px;
+    min-height: auto;
+}
+
+#materia-opciones .mode-card.selected {
+    background: #EFF6FF;
+    border-color: var(--azul-oscuro);
+}
+
 /* ===== APP CARD ===== */
 .app-card {
     background: var(--blanco);
