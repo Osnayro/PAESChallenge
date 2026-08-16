@@ -1,6 +1,6 @@
 /**
  * PAES Challenge Engine v4.6.0 (Production-Ready)
- * Sincronizado con index.html (Selector de Lotes & Modal)
+ * Incluye generador dinámico de Lotes Aleatorios y Sincronización con Google Sheets
  */
 
 const PAESApp = (() => {
@@ -57,6 +57,7 @@ const PAESApp = (() => {
         currentLevel: 1,
         questionIndex: 0,
         playerName: '',
+        loteSeleccionado: null,
         offlineQueue: []
     };
 
@@ -87,42 +88,91 @@ const PAESApp = (() => {
     };
 
     // ==========================================
-    // 3. SELECCIÓN Y HIGHLIGHTING SEGURO (RANGE API)
+    // 3. ADMINISTRADOR Y RENDERIZADOR DE LOTES ALEATORIOS
     // ==========================================
-    const DOMUtils = {
-        resaltarEvidenciaSegura(nodoContenedor, textoABuscar, claseCss = 'evidencia-correcta') {
-            if (!nodoContenedor || !textoABuscar || typeof textoABuscar !== 'string') return false;
-
-            const walker = document.createTreeWalker(
-                nodoContenedor,
-                NodeFilter.SHOW_TEXT,
-                null,
-                false
-            );
-
-            let node;
-            const termino = textoABuscar.trim().toLowerCase();
-
-            while ((node = walker.nextNode())) {
-                const index = node.nodeValue.toLowerCase().indexOf(termino);
-                if (index !== -1) {
-                    try {
-                        const range = document.createRange();
-                        range.setStart(node, index);
-                        range.setEnd(node, index + textoABuscar.length);
-
-                        const span = document.createElement('span');
-                        span.className = claseCss;
-
-                        range.surroundContents(span);
-                        span.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        return true;
-                    } catch (err) {
-                        console.warn('[PAES DOM] No se pudo crear el rango en el nodo actual:', err);
-                    }
-                }
+    const LoteSelectorManager = {
+        // Algoritmo Fisher-Yates para barajar preguntas
+        mezclarPreguntas(array) {
+            const copia = [...array];
+            for (let i = copia.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copia[i], copia[j]] = [copia[j], copia[i]];
             }
-            return false;
+            return copia;
+        },
+
+        render() {
+            const container = document.getElementById('lote-selector');
+            const btnStart = document.getElementById('btn-start');
+            if (!container) return;
+
+            // Obtener el banco de preguntas cargado en el entorno global
+            const bancoOriginal = window.bancoPreguntas || 
+                                  window.preguntasLectora || 
+                                  window.preguntasMatematica1 || 
+                                  window.preguntasMatematica2 || 
+                                  window.preguntasCiencias || [];
+
+            if (!bancoOriginal.length) {
+                container.innerHTML = `<p style="color:#DC2626; text-align:center; font-weight:600; padding:10px;">⚠️ Cargando banco de preguntas...</p>`;
+                return;
+            }
+
+            // Mezclar preguntas aleatoriamente
+            const preguntasMezcladas = this.mezclarPreguntas(bancoOriginal);
+            const tamanoLote = 25;
+            const totalLotes = Math.ceil(preguntasMezcladas.length / tamanoLote) || 4;
+
+            window.preguntasPartidaActual = preguntasMezcladas;
+
+            let html = `
+                <div style="margin: 15px 0; text-align: center;">
+                    <label style="font-weight:700; color:var(--azul-oscuro, #1E3A63); display:block; margin-bottom:8px;">
+                        🎲 Selecciona un Lote Aleatorio:
+                    </label>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;">
+            `;
+
+            for (let i = 1; i <= totalLotes; i++) {
+                html += `
+                    <button type="button" class="lote-btn" data-lote="${i}" 
+                        style="padding: 10px; border: 2px solid #8B5CF6; border-radius: 10px; background: white; color: #8B5CF6; font-weight: 700; cursor: pointer; transition: all 0.2s;">
+                        ⚡ Lote ${i}<br><small style="font-size:0.75rem; font-weight:400;">(${tamanoLote} preg. al azar)</small>
+                    </button>
+                `;
+            }
+
+            html += `</div></div>`;
+            container.innerHTML = html;
+
+            // Asignar eventos a cada botón de lote
+            container.querySelectorAll('.lote-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const nroLote = parseInt(btn.getAttribute('data-lote'), 10);
+                    const inicioIndex = (nroLote - 1) * tamanoLote;
+                    const preguntasDelLote = preguntasMezcladas.slice(inicioIndex, inicioIndex + tamanoLote);
+
+                    Engine.updateState('loteSeleccionado', nroLote);
+                    window.preguntasActivasMesa = preguntasDelLote;
+
+                    // Estilos visuales al seleccionar
+                    container.querySelectorAll('.lote-btn').forEach(b => {
+                        b.style.background = 'white';
+                        b.style.color = '#8B5CF6';
+                    });
+                    btn.style.background = '#8B5CF6';
+                    btn.style.color = 'white';
+
+                    // Feedback de selección
+                    const confirmEl = document.getElementById('lote-confirmacion');
+                    if (confirmEl) {
+                        confirmEl.style.display = 'block';
+                        confirmEl.innerHTML = `🎲 <b>Lote ${nroLote} seleccionado:</b> ${preguntasDelLote.length} preguntas aleatorias preparadas.`;
+                    }
+
+                    if (btnStart) btnStart.style.display = 'block';
+                });
+            });
         }
     };
 
@@ -181,8 +231,8 @@ const PAESApp = (() => {
             this.submitBtnEl = document.getElementById('btn-save-nickname');
 
             if (!this.modalEl) {
-                console.warn('[PAES Modal] #nickname-modal no existe en el DOM.');
-                this.desbloquearYMostrarLotes();
+                this.hide();
+                LoteSelectorManager.render();
                 return;
             }
 
@@ -190,7 +240,7 @@ const PAESApp = (() => {
             if (savedName) {
                 this.hide();
                 Engine.updateState('playerName', savedName);
-                this.desbloquearYMostrarLotes();
+                LoteSelectorManager.render();
             } else {
                 this.show();
             }
@@ -212,26 +262,11 @@ const PAESApp = (() => {
                 this.modalEl.classList.remove('active');
                 this.modalEl.style.display = 'none';
             }
-            // Eliminar overlays fantasma
             const extraOverlay = document.getElementById("paes-onboarding-modal");
             if (extraOverlay) extraOverlay.remove();
 
-            // Desbloquear interacciones globales
             document.body.style.pointerEvents = 'auto';
             document.body.style.overflow = 'auto';
-        },
-
-        desbloquearYMostrarLotes() {
-            // Invocar la función de renderizado de lotes si está disponible en alguno de los scripts
-            if (typeof window.cargarLotes === 'function') {
-                window.cargarLotes();
-            } else if (typeof window.renderLotes === 'function') {
-                window.renderLotes();
-            } else if (typeof window.initLotes === 'function') {
-                window.initLotes();
-            } else if (window.BancoPreguntas && typeof window.BancoPreguntas.init === 'function') {
-                window.BancoPreguntas.init();
-            }
         },
 
         setError(mensaje) {
@@ -281,7 +316,7 @@ const PAESApp = (() => {
             Engine.updateState('playerName', nombre);
 
             this.hide();
-            this.desbloquearYMostrarLotes();
+            LoteSelectorManager.render();
 
             GameLogic.notificarToast(`¡Bienvenido, ${nombre}! 🎉`, '🎉');
         }
@@ -327,7 +362,7 @@ const PAESApp = (() => {
             if (streakElement && (changedKey === 'streak' || changedKey === 'reset')) {
                 streakElement.textContent = state.streak;
             }
-            if (shieldElement && (changedKey === 'shield-display' || changedKey === 'reset')) {
+            if (shieldElement && (changedKey === 'streakShields' || changedKey === 'reset')) {
                 shieldElement.textContent = state.streakShields;
             }
         });
@@ -408,14 +443,18 @@ const PAESApp = (() => {
     return {
         getState: Engine.getState,
         procesarRespuesta: GameLogic.procesarRespuesta.bind(GameLogic),
-        resaltarTexto: DOMUtils.resaltarEvidenciaSegura,
         reset: Engine.reset,
+        renderLotes: LoteSelectorManager.render.bind(LoteSelectorManager),
         setPlayerName: (name) => Engine.updateState('playerName', name),
         guardarPuntaje: (materia, puntaje, racha) => GoogleSheetsSync.guardarPuntaje(materia, puntaje, racha)
     };
 })();
 
-// Wrapper global de compatibilidad
+// Wrappers globales de compatibilidad
 function guardarPuntaje(materia, puntaje, racha) {
     return PAESApp.guardarPuntaje(materia, puntaje, racha);
+}
+
+function renderLotes() {
+    return PAESApp.renderLotes();
 }
