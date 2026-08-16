@@ -310,12 +310,13 @@
     </div>
 
     <!-- Modal de Registro / Autenticación de Usuario -->
+    <!-- Visibilidad controlada exclusivamente por la clase .active (ver app.js -> initNicknameModal) -->
     <div id="nickname-modal" class="nickname-overlay">
         <div class="nickname-card">
             <h2 class="nickname-title">¡Bienvenido! 🦉</h2>
             <p class="nickname-subtitle">Ingresa tu apodo y un PIN clave de 4 dígitos para registrar o consultar tu puntaje.</p>
             
-            <form id="nickname-form" onsubmit="handleUserRegistration(event)">
+            <form id="nickname-form">
                 <div class="nickname-input-group">
                     <label for="nickname-field" class="nickname-label">Tu Apodo / Nickname</label>
                     <input type="text" id="nickname-field" class="nickname-input" placeholder="Ej. Sabio2026" maxlength="15" required autocomplete="off">
