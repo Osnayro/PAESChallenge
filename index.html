@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -13,6 +14,15 @@
     <meta name="apple-mobile-web-app-title" content="PAES Challenge">
     <link rel="apple-touch-icon" href="icono-app.PNG">
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Ajuste temporal para asegurar que el modal de registro no se muestre por defecto */
+        .nickname-overlay {
+            display: none;
+        }
+        .nickname-overlay.active {
+            display: flex;
+        }
+    </style>
 </head>
 <body>
     <!-- Canvas para efectos visuales -->
@@ -310,7 +320,6 @@
     </div>
 
     <!-- Modal de Registro / Autenticación de Usuario -->
-    <!-- Visibilidad controlada exclusivamente por la clase .active (ver app.js -> initNicknameModal) -->
     <div id="nickname-modal" class="nickname-overlay">
         <div class="nickname-card">
             <h2 class="nickname-title">¡Bienvenido! 🦉</h2>
