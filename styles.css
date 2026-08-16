@@ -909,6 +909,7 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
    ================================================================ */
 
 .nickname-overlay {
+    display: none; /* oculto por defecto: se activa explícitamente vía JS con .active */
     position: fixed;
     top: 0;
     left: 0;
@@ -917,11 +918,14 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
     background: rgba(15, 23, 42, 0.85);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
-    display: flex;
     justify-content: center;
     align-items: center;
     padding: 20px;
     z-index: 2500;
+}
+
+.nickname-overlay.active {
+    display: flex;
 }
 
 .nickname-card {
@@ -994,4 +998,14 @@ body.level-4 { background: linear-gradient(135deg, #FEF2F2 0%, #FFF7ED 100%); }
 
 .nickname-error.active {
     display: block;
+}
+
+.nickname-input.input-error {
+    border-color: #EF4444;
+}
+
+#btn-save-nickname:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    box-shadow: none;
 }
