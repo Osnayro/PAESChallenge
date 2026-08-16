@@ -1,8 +1,11 @@
 
+
+
 /**
  * PAES Challenge Engine v4.4.0 — Producción
  * Lógica del juego + 4 Lotes + Sabiondo + 4 Niveles
  * Registro por apodo y PIN
+ * Selector de modalidad: 4 materias individuales o modo completo
  */
 
 const state = {
@@ -48,7 +51,8 @@ const state = {
     desafioEndTime: null,
     tiempoTotalDesafio: 0,
     totalPreguntasRespondidas: 0,
-    lecturaActiva: null
+    lecturaActiva: null,
+    modoJuego: null
 };
 
 const levelNames = {
@@ -383,6 +387,32 @@ async function registrarOAutenticarUsuario(nombre, pin) {
     }
 }
 
+async function guardarPuntaje(materia, puntaje, racha) {
+    const nombre = safeLocalGet('usuario_nombre', '');
+    if (!nombre) return;
+
+    try {
+        await fetch(SCRIPT_URL_REGISTRO, {
+            method: "POST",
+            mode: "no-cors",
+            headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+            },
+            body: JSON.stringify({
+                action: "save_score",
+                nombre: nombre,
+                materia: materia || "General",
+                puntaje_maximo: puntaje || 0,
+                racha_maxima: racha || 0,
+                fecha: new Date().toISOString().split('T')[0]
+            })
+        });
+        console.log("Puntaje guardado con éxito en BD_Lideres.");
+    } catch (error) {
+        console.error("Error al registrar el puntaje en BD_Lideres:", error);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     NicknameModal.init();
     loadBadges();
@@ -444,7 +474,7 @@ function cerrarBannerInstalacion(tipo) {
 function instalarPWAAndroid() {
     if (!_deferredInstallPrompt) { ocultarBannerInstalacion('android'); return; }
     _deferredInstallPrompt.prompt();
-    _deferredInstallPrompt.userChoice.then((choice) => {
+    _deferredInstallPrompt.userChoice.then(() => {
         _deferredInstallPrompt = null;
         ocultarBannerInstalacion('android');
     });
@@ -525,6 +555,54 @@ function seleccionarLote(lote) {
     if (btn) { btn.style.display = 'block'; btn.textContent = `¡Comenzar Partida ${lote.id}! 🚀`; btn.classList.add('pulse-ready'); }
     const conf = document.getElementById('lote-confirmacion');
     if (conf) { conf.style.display = 'block'; conf.innerHTML = `✅ <b>Partida ${lote.id} seleccionada</b><br><small>📖${lote.preguntas.lectora.length} 📐${lote.preguntas.matematica1.length} 📊${lote.preguntas.matematica2.length} 🔬${lote.preguntas.ciencias.length}</small>`; }
+
+    mostrarSelectorModalidad();
+}
+
+function mostrarSelectorModalidad() {
+    const contenedor = document.getElementById('materia-selector');
+    const opciones = document.getElementById('materia-opciones');
+    if (!contenedor || !opciones) return;
+
+    contenedor.style.display = 'block';
+    opciones.innerHTML = '';
+
+    const modalidades = [
+        { id: 1, nombre: '📖 Competencia Lectora', desc: 'Solo Lectura' },
+        { id: 2, nombre: '📐 Matemática 1', desc: 'Solo M1' },
+        { id: 3, nombre: '📊 Matemática 2', desc: 'Solo M2' },
+        { id: 4, nombre: '🔬 Ciencias', desc: 'Solo Ciencias' },
+        { id: 'completo', nombre: '🎯 Modo Completo', desc: 'Los 4 niveles' }
+    ];
+
+    modalidades.forEach(m => {
+        const btn = document.createElement('div');
+        btn.className = 'mode-card';
+        btn.style.cursor = 'pointer';
+        btn.innerHTML = `
+            <div class="mode-title">${m.nombre}</div>
+            <div class="mode-desc">${m.desc}</div>
+        `;
+        btn.addEventListener('click', () => {
+            opciones.querySelectorAll('.mode-card').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            state.modoJuego = m.id;
+            actualizarTextoBotonStart();
+        });
+        opciones.appendChild(btn);
+    });
+}
+
+function actualizarTextoBotonStart() {
+    const btn = document.getElementById('btn-start');
+    if (!btn) return;
+    if (state.modoJuego && state.modoJuego !== 'completo') {
+        btn.textContent = `¡Jugar ${levelNames[state.modoJuego]}! 🚀`;
+    } else if (state.modoJuego === 'completo') {
+        btn.textContent = '¡Comenzar Modo Completo! 🚀';
+    } else {
+        btn.textContent = '¡Comenzar Desafío PAES! 🚀';
+    }
 }
 
 function reiniciarLotes() {
@@ -536,6 +614,9 @@ function reiniciarLotes() {
     actualizarSelectorLotes(state.lotesDisponibles);
     document.getElementById('btn-start').style.display = 'none';
     document.getElementById('lote-confirmacion').style.display = 'none';
+    const ms = document.getElementById('materia-selector');
+    if (ms) ms.style.display = 'none';
+    state.modoJuego = null;
     if (window.effectsManager) window.effectsManager.triggerToastAcademico('¡4 nuevas partidas! 🦉', { icon:'🔄', bg:'linear-gradient(135deg,#8B5CF6,#6D28D9)', duration:2500 });
 }
 
@@ -571,6 +652,9 @@ function showScreen(id) {
         document.getElementById('btn-start').style.display = 'none';
         document.getElementById('lote-confirmacion').style.display = 'none';
         document.getElementById('lote-selector').style.display = 'block';
+        const ms = document.getElementById('materia-selector');
+        if (ms) ms.style.display = 'none';
+        state.modoJuego = null;
     }
     if (typeof injectBuhoSVGs === 'function') setTimeout(injectBuhoSVGs, 100);
 }
@@ -589,12 +673,46 @@ function startGame() {
         return;
     }
 
+    if (!state.modoJuego) {
+        if (window.effectsManager) window.effectsManager.triggerToastAcademico('🎯 Elige una modalidad de juego', { icon:'⚠️', duration:2500 });
+        return;
+    }
+
     if (hayProgresoGuardado()) {
         mostrarModalContinuar();
         return;
     }
 
-    iniciarJuegoNuevo();
+    if (state.modoJuego === 'completo') {
+        iniciarJuegoNuevo();
+    } else {
+        iniciarPartidaIndividual(parseInt(state.modoJuego, 10));
+    }
+}
+
+function iniciarPartidaIndividual(nivel) {
+    if (window.effectsManager) window.effectsManager.ensureAudio();
+    state.desafioStartTime = Date.now();
+    state.desafioEndTime = null;
+    state.tiempoTotalDesafio = 0;
+    state.totalPreguntasRespondidas = 0;
+    state.score = 0;
+    state.levelScore = 0;
+    state.streak = 0;
+    state.maxStreak = 0;
+    state.currentQuestion = 0;
+    state.currentLevel = nivel;
+    state.topicScores = {};
+    state.isFrozen = false;
+    state.powerupsUsedThisLevel = false;
+    state.levelPerfect = true;
+    state.levelStars = {};
+    state.ultimoEstadoBocadillo = null;
+    state.lecturaActiva = null;
+    if (state._freezeTimeout) clearTimeout(state._freezeTimeout);
+    state._freezeTimeout = null;
+    document.body.className = `level-${nivel}`;
+    startLevel(nivel);
 }
 
 function mostrarModalContinuar() {
@@ -631,7 +749,8 @@ function mostrarModalContinuar() {
     box.querySelector('#reiniciar-partida').addEventListener('click', () => {
         overlay.remove();
         borrarProgreso();
-        iniciarJuegoNuevo();
+        if (state.modoJuego === 'completo') iniciarJuegoNuevo();
+        else iniciarPartidaIndividual(parseInt(state.modoJuego, 10));
     });
 }
 
@@ -800,6 +919,10 @@ function startLevel(lv) {
 }
 
 function goToNextLevel() {
+    if (state.modoJuego !== 'completo') {
+        showFinalResults();
+        return;
+    }
     const next = state.currentLevel + 1;
     if (next <= 4) startLevel(next);
     else showFinalResults();
@@ -1340,6 +1463,12 @@ function endLevel() {
     const tq = state.totalQuestions || 25;
     const sc = state.levelPerfect ? 3 : (state.correctInLevel >= tq*0.7 ? 2 : 1);
     state.levelStars[state.currentLevel] = sc;
+
+    if (state.modoJuego !== 'completo') {
+        showFinalResults();
+        return;
+    }
+
     if (state.levelPerfect && !state.badges.perfectScore) {
         state.badges.perfectScore = true; playSound('achievement');
         if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
@@ -1411,6 +1540,11 @@ function showFinalResults() {
         else sp.textContent = '¡El aprendizaje es un camino diario! 💡📖';
     }
     if (state.currentLote) marcarLoteComoUsado(state.currentLote);
+
+    if (state.modoJuego !== 'completo') {
+        guardarPuntaje(levelNames[state.currentLevel], state.levelScore, state.maxStreak);
+    }
+
     showScreen('screen-results');
     if (window.effectsManager) window.effectsManager.triggerFuegosAcademicos();
     saveToLeaderboard();
@@ -1426,7 +1560,7 @@ function restartGame() {
     state.levelStars = {}; state.bonusQuestionActive = false; state.correctInLevel = 0;
     state.currentLote = null; state.loteData = null; state.ultimoEstadoBocadillo = null;
     state.desafioStartTime = null; state.desafioEndTime = null; state.tiempoTotalDesafio = 0;
-    state.totalPreguntasRespondidas = 0; state.lecturaActiva = null;
+    state.totalPreguntasRespondidas = 0; state.lecturaActiva = null; state.modoJuego = null;
     document.body.className = 'level-1';
     document.getElementById('streak-display')?.classList.remove('on-fire');
     updateScore(); updateStreak(); updateProgress(); updateLevelDisplay();
@@ -1434,6 +1568,8 @@ function restartGame() {
     document.getElementById('btn-start').style.display = 'none';
     document.getElementById('lote-confirmacion').style.display = 'none';
     document.getElementById('lote-selector').style.display = 'block';
+    const ms = document.getElementById('materia-selector');
+    if (ms) ms.style.display = 'none';
     showScreen('screen-welcome');
 }
 
