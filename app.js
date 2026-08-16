@@ -1,12 +1,6 @@
 /**
  * PAES Challenge Engine v4.6.0 (Production-Ready)
- *
- * Módulos integrados:
- * - State Management con suscripciones inmutables
- * - Highlighting seguro vía DOM Range API & TreeWalker
- * - Modal de Registro/Login (Nickname + PIN) con validación real de servidor
- * - Sistema de Racha y Escudo Anti-Frustración
- * - Persistencia robusta en LocalStorage + Cola Offline
+ * Sincronizado con index.html (Selector de Lotes & Modal)
  */
 
 const PAESApp = (() => {
@@ -188,6 +182,7 @@ const PAESApp = (() => {
 
             if (!this.modalEl) {
                 console.warn('[PAES Modal] #nickname-modal no existe en el DOM.');
+                this.desbloquearYMostrarLotes();
                 return;
             }
 
@@ -195,6 +190,7 @@ const PAESApp = (() => {
             if (savedName) {
                 this.hide();
                 Engine.updateState('playerName', savedName);
+                this.desbloquearYMostrarLotes();
             } else {
                 this.show();
             }
@@ -216,8 +212,26 @@ const PAESApp = (() => {
                 this.modalEl.classList.remove('active');
                 this.modalEl.style.display = 'none';
             }
+            // Eliminar overlays fantasma
+            const extraOverlay = document.getElementById("paes-onboarding-modal");
+            if (extraOverlay) extraOverlay.remove();
+
+            // Desbloquear interacciones globales
             document.body.style.pointerEvents = 'auto';
             document.body.style.overflow = 'auto';
+        },
+
+        desbloquearYMostrarLotes() {
+            // Invocar la función de renderizado de lotes si está disponible en alguno de los scripts
+            if (typeof window.cargarLotes === 'function') {
+                window.cargarLotes();
+            } else if (typeof window.renderLotes === 'function') {
+                window.renderLotes();
+            } else if (typeof window.initLotes === 'function') {
+                window.initLotes();
+            } else if (window.BancoPreguntas && typeof window.BancoPreguntas.init === 'function') {
+                window.BancoPreguntas.init();
+            }
         },
 
         setError(mensaje) {
@@ -265,7 +279,9 @@ const PAESApp = (() => {
             Storage.setRaw('usuario_nombre', nombre);
             Storage.setRaw('usuario_pin', pin);
             Engine.updateState('playerName', nombre);
+
             this.hide();
+            this.desbloquearYMostrarLotes();
 
             GameLogic.notificarToast(`¡Bienvenido, ${nombre}! 🎉`, '🎉');
         }
@@ -311,7 +327,7 @@ const PAESApp = (() => {
             if (streakElement && (changedKey === 'streak' || changedKey === 'reset')) {
                 streakElement.textContent = state.streak;
             }
-            if (shieldElement && (changedKey === 'streakShields' || changedKey === 'reset')) {
+            if (shieldElement && (changedKey === 'shield-display' || changedKey === 'reset')) {
                 shieldElement.textContent = state.streakShields;
             }
         });
