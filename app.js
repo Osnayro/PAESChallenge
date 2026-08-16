@@ -1,11 +1,10 @@
 
-
-
 /**
  * PAES Challenge Engine v4.4.0 — Producción
  * Lógica del juego + 4 Lotes + Sabiondo + 4 Niveles
  * Registro por apodo y PIN
  * Selector de modalidad: 4 materias individuales o modo completo
+ * Reproducción de intro al registrarse
  */
 
 const state = {
@@ -356,6 +355,14 @@ const NicknameModal = {
 
         this.hide();
         cargarYMostrarLotes();
+
+        if (window.effectsManager && typeof window.effectsManager.initGlobalAudio === 'function') {
+            window.effectsManager.initGlobalAudio();
+        }
+
+        if (window.effectsManager && typeof window.effectsManager.playSound === 'function') {
+            window.effectsManager.playSound('intro');
+        }
 
         if (window.effectsManager) {
             window.effectsManager.triggerToastAcademico(`¡Bienvenido, ${nombre}! 🎉`, { icon: '🎉', duration: 2500 });
