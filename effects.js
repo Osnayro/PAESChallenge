@@ -1,21 +1,8 @@
 
 /**
- * ============================================================
- * PAES Challenge — Sabiondo Effects Manager v1.2.0
+ * PAES Challenge — Sabiondo Effects Manager v1.2.1
  * Efectos visuales académicos (Canvas 2D) + Sonidos + Toasts
  * Para "PAES Challenge: Desafío de Admisión Universitaria"
- * ============================================================
- *
- * ARCHIVOS DE SONIDO REQUERIDOS EN /sounds/:
- *   - splash.mp3      → Pantalla de carga
- *   - correct.mp3     → Respuesta correcta
- *   - incorrect.mp3   → Respuesta incorrecta
- *   - levelup.mp3     → Subir de nivel
- *   - levelstart.mp3  → Iniciar nivel
- *   - achievement.mp3 → Nueva insignia
- *   - powerup.mp3     → Usar power-up
- *   - star.mp3        → Efecto de estrellas
- *   - next.mp3        → Siguiente pregunta
  */
 
 class ContiEffectsManager {
@@ -40,12 +27,9 @@ class ContiEffectsManager {
         this.animationId = null;
         this.isRunning = false;
 
-        // ================================================================
-        // REGISTRO DE ARCHIVOS DE SONIDO
-        // Todos deben existir en la carpeta /sounds/
-        // ================================================================
         this.soundFiles = {
             splash:      'sounds/splash.mp3',
+            intro:       'sounds/intro.mp3',
             correct:     'sounds/correct.mp3',
             incorrect:   'sounds/incorrect.mp3',
             levelup:     'sounds/levelup.mp3',
@@ -56,23 +40,19 @@ class ContiEffectsManager {
             next:        'sounds/next.mp3'
         };
 
-        // Pool de audio para reproducción simultánea
         this.audioPool = [];
         this.maxAudioPool = 9;
         this.audioPoolIndex = 0;
 
-        // Buffers de audio precargados
         this.audioBuffers = {};
         this.audioLoaded = false;
         this.audioLoadError = false;
         this.soundsLoadedCount = 0;
         this.soundsTotalCount = Object.keys(this.soundFiles).length;
 
-        // AudioContext para síntesis de sonido (tick, fallback)
         this.audioCtx = null;
         this.audioCtxReady = false;
 
-        // Paleta de colores académica
         this.colors = {
             star:      ['#FFD700', '#FFC107', '#FFB300', '#FFA000', '#FFF8DC', '#FFE082'],
             estrellas: ['#FFD700', '#FFC107', '#FFB300', '#FFA000', '#FFF8DC', '#FFE082'],
@@ -92,14 +72,10 @@ class ContiEffectsManager {
         this.startLoop();
         this._preloadSounds();
 
-        console.log('🦉 Sabiondo Effects Manager v1.2.0 listo');
+        console.log('🦉 Sabiondo Effects Manager v1.2.1 listo');
         console.log('📁 Sonidos a cargar:', this.soundsTotalCount, 'archivos');
         console.log('🔊 Volumen:', this.masterVolume);
     }
-
-    // ================================================================
-    //  CANVAS
-    // ================================================================
 
     resizeCanvas() {
         if (!this.canvas) return;
@@ -222,10 +198,6 @@ class ContiEffectsManager {
         }
     }
 
-    // ================================================================
-    //  DIBUJOS DE PARTÍCULAS
-    // ================================================================
-
     _drawEstrella(ctx, p) {
         const spikes = 5;
         const outerR = p.size;
@@ -311,10 +283,6 @@ class ContiEffectsManager {
         ctx.lineTo(0, p.size);
         ctx.stroke();
     }
-
-    // ================================================================
-    //  EFECTOS VISUALES ACADÉMICOS
-    // ================================================================
 
     triggerStarExplosion(x, y, count = 15) {
         if (!this.canvas) return;
@@ -545,10 +513,6 @@ class ContiEffectsManager {
         });
     }
 
-    // ================================================================
-    //  TOASTS
-    // ================================================================
-
     triggerToastAcademico(message, options = {}) {
         const { icon = '🦉', bg = 'linear-gradient(135deg, #1E3A63, #3B82F6)', duration = 3000, position = 'top' } = options;
         let container = document.getElementById('toast-container');
@@ -569,10 +533,6 @@ class ContiEffectsManager {
         }, duration);
     }
 
-    // ================================================================
-    //  MÉTODOS DE CONVENIENCIA (COMPATIBILIDAD)
-    // ================================================================
-
     triggerStarsFromElement(element, count = 15) {
         if (!element || !this.canvas) return;
         const rect = element.getBoundingClientRect();
@@ -592,10 +552,6 @@ class ContiEffectsManager {
     triggerFireworks(count) { this.triggerFuegosAcademicos(count); }
     triggerCoinRain() { this.triggerStarRain(); }
     triggerToast(message, options) { this.triggerToastAcademico(message, options); }
-
-    // ================================================================
-    //  AUDIO - PRECARGA DE SONIDOS
-    // ================================================================
 
     _preloadSounds(onProgress) {
         const loaderFill = document.getElementById('loader-fill');
@@ -636,7 +592,7 @@ class ContiEffectsManager {
                 if (this.soundsLoadedCount === this.soundsTotalCount) {
                     this.audioLoaded = true;
                     console.log('✅ Todos los sonidos cargados:', this.soundsTotalCount, 'archivos');
-                    this._showSplashButton();
+                    this._onSoundLoadComplete();
                 }
             }, { once: true });
 
@@ -650,7 +606,7 @@ class ContiEffectsManager {
                 if (this.soundsLoadedCount === this.soundsTotalCount && !this.audioLoaded) {
                     this.audioLoadError = true;
                     console.warn('⚠️ Algunos sonidos no se cargaron. La app funcionará sin ellos.');
-                    this._showSplashButton();
+                    this._onSoundLoadComplete();
                 }
             });
 
@@ -658,32 +614,26 @@ class ContiEffectsManager {
         }
     }
 
-    _showSplashButton() {
+    _onSoundLoadComplete() {
         const loaderFill = document.getElementById('loader-fill');
         const loaderLabel = document.getElementById('loader-label');
-        const skipBtn = document.getElementById('skip-splash-btn');
         const splashScreen = document.getElementById('splash-screen');
+        const skipBtn = document.getElementById('skip-splash-btn');
+
+        if (skipBtn) skipBtn.style.display = 'none';
 
         if (loaderFill) loaderFill.style.width = '100%';
         if (loaderLabel) {
             loaderLabel.textContent = '¡Listo! Sabiondo te espera 🦉';
             loaderLabel.style.color = '#10B981';
         }
-        if (skipBtn) {
-            skipBtn.style.display = 'flex';
-            skipBtn.classList.add('ready');
-            skipBtn.disabled = false;
-            skipBtn.addEventListener('click', () => {
-                this.initGlobalAudio();
-                this.playSound('splash');
-                if (splashScreen) splashScreen.classList.add('hidden');
-            }, { once: true });
+
+        if (splashScreen) {
+            setTimeout(() => {
+                splashScreen.classList.add('hidden');
+            }, 900);
         }
     }
-
-    // ================================================================
-    //  AUDIO - CONTEXTO GLOBAL
-    // ================================================================
 
     initGlobalAudio() {
         if (this.audioCtxReady) return;
@@ -702,10 +652,6 @@ class ContiEffectsManager {
             console.warn('Error al crear AudioContext:', e);
         }
     }
-
-    // ================================================================
-    //  AUDIO - REPRODUCCIÓN
-    // ================================================================
 
     playSound(type) {
         if (!this.audioLoaded && !this.audioLoadError) return;
@@ -783,15 +729,11 @@ class ContiEffectsManager {
     }
 }
 
-// ================================================================
-//  INICIALIZACIÓN AUTOMÁTICA
-// ================================================================
-
 document.addEventListener('DOMContentLoaded', () => {
     if (!window.effectsManager) {
         window.effectsManager = new ContiEffectsManager({
             canvasId: 'effects-canvas',
-            scoreBadgeId: 'score-badge',
+            scoreBadgeId: 'score-display',
             maxParticles: 300,
             masterVolume: 0.8,
         });
