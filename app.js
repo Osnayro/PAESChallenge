@@ -271,6 +271,7 @@ const PAESApp = (() => {
 
             Storage.setRaw('usuario_nombre', nombre);
             Storage.setRaw('usuario_pin', pin);
+            if (resultado.idUsuario) Storage.setRaw('usuario_id', resultado.idUsuario);
             Engine.updateState('playerName', nombre);
             this.hide();
 
@@ -355,13 +356,16 @@ const PAESApp = (() => {
         // El body sigue siendo JSON como texto: Apps Script lo lee igual
         // desde e.postData.contents sin importar el header.
         //
-        // Para validar el PIN de verdad, el doPost() de tu Apps Script debe
-        // devolver JSON, por ejemplo:
-        //   return ContentService.createTextOutput(JSON.stringify({ok:true}))
-        //     .setMimeType(ContentService.MimeType.JSON);
-        // o para un PIN incorrecto:
-        //   {"ok": false, "mensaje": "PIN incorrecto para ese apodo"}
+        // Contrato de respuesta esperado (el que ya devuelve tu doPost):
+        //   Éxito:  {status:"success", message:"...", id_usuario:"...", nombre:"..."}
+        //   Error:  {status:"error",   message:"El PIN de acceso es incorrecto..."}
         async registrarOAutenticarUsuario(nombre, pin) {
+            // Límite de tiempo: si el fetch se queda colgado (redirect que no
+            // resuelve, red inestable en movimiento, etc.) esto lo cancela a
+            // los 12s en vez de dejar el botón "pensando" para siempre.
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+
             try {
                 const response = await fetch(this.SCRIPT_URL, {
                     method: "POST",
@@ -372,30 +376,36 @@ const PAESApp = (() => {
                         action: "login_or_register",
                         nombre: nombre,
                         pin_acceso: pin
-                    })
+                    }),
+                    signal: controller.signal
                 });
 
-                // Si el Apps Script responde con CORS habilitado, se puede
-                // leer el resultado real de la validación del PIN.
                 let data = null;
                 try {
                     data = await response.json();
                 } catch (parseErr) {
-                    // Respuesta no-JSON u opaca (no-cors): se asume éxito
-                    // si al menos la petición de red no falló.
-                    console.warn('[PAES Sync] No se pudo leer la respuesta de Apps Script; asumiendo éxito de red.', parseErr);
-                    return { ok: true };
+                    // Respuesta no-JSON o CORS bloqueó la lectura del body:
+                    // no podemos confirmar el PIN, se lo hacemos saber al
+                    // usuario en vez de dejarlo pasar a ciegas.
+                    console.warn('[PAES Sync] No se pudo leer la respuesta de Apps Script.', parseErr);
+                    return { ok: false, mensaje: 'No se pudo verificar tu apodo y PIN. Revisa tu conexión e intenta de nuevo.' };
                 }
 
-                if (data && data.ok === false) {
-                    return { ok: false, mensaje: data.mensaje || 'PIN incorrecto para ese apodo.' };
+                if (!data || data.status !== 'success') {
+                    return { ok: false, mensaje: (data && data.message) || 'PIN incorrecto para ese apodo.' };
                 }
 
                 console.log("Registro/Autenticación procesado correctamente en Sheets.");
-                return { ok: true };
+                return { ok: true, idUsuario: data.id_usuario };
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.error("Tiempo de espera agotado al conectar con BD_Usuarios.");
+                    return { ok: false, mensaje: 'El servidor tardó demasiado en responder. Intenta de nuevo.' };
+                }
                 console.error("Error al conectar con BD_Usuarios:", error);
                 return { ok: false, mensaje: 'No hay conexión con el servidor. Intenta de nuevo.' };
+            } finally {
+                clearTimeout(timeoutId);
             }
         },
 
@@ -403,16 +413,18 @@ const PAESApp = (() => {
         async guardarPuntaje(materia, puntaje, racha) {
             const nombre = Storage.getRaw('usuario_nombre', '');
             if (!nombre) return;
+            const idUsuario = Storage.getRaw('usuario_id', '');
 
             try {
                 await fetch(this.SCRIPT_URL, {
                     method: "POST",
                     mode: "no-cors",
                     headers: {
-                        "Content-Type": "application/json",
+                        "Content-Type": "text/plain;charset=utf-8",
                     },
                     body: JSON.stringify({
                         action: "save_score",
+                        id_usuario: idUsuario || undefined,
                         nombre: nombre,
                         materia: materia || "General",
                         puntaje_maximo: puntaje || 0,
