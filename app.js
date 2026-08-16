@@ -347,59 +347,29 @@ const PAESApp = (() => {
         // URL del despliegue de Apps Script
         SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwZkLrIZ-bo4nJfJQ3r5lTa8orrmYWNVr6joi0Ng-c8SwDyU_bqzc4zxffcB1Phn7-ncA/exec",
 
-        // 1. Enviar Usuario y PIN a BD_Usuarios y esperar confirmación real.
+        // 1. Validar/crear usuario en BD_Usuarios — todo vía GET.
         //
-        // Usamos Content-Type: text/plain (en vez de application/json) para
-        // que el navegador NO dispare una petición preflight (OPTIONS), que
-        // los Web Apps de Apps Script no responden por defecto y hace que el
-        // fetch falle con un error de red aunque el servidor esté disponible.
-        // El body sigue siendo JSON como texto: Apps Script lo lee igual
-        // desde e.postData.contents sin importar el header.
-        //
-        // Contrato de respuesta esperado (el que ya devuelve tu doPost):
-        //   Éxito:  {status:"success", message:"...", id_usuario:"...", nombre:"..."}
-        //   Error:  {status:"error",   message:"El PIN de acceso es incorrecto..."}
+        // Se confirmó en pruebas reales que el POST a este Apps Script no
+        // llega de forma confiable en redes móviles inestables (tren,
+        // metro, etc.), mientras que el GET sí responde siempre. Por eso
+        // tanto la consulta como el registro/login usan GET.
+        // Requiere que doGet() en Apps Script tenga la acción
+        // "login_or_register" (ver apps-script-doGet-nueva-accion.gs).
         async registrarOAutenticarUsuario(nombre, pin) {
-            // Límite de tiempo: si el fetch se queda colgado (redirect que no
-            // resuelve, red inestable en movimiento, etc.) esto lo cancela a
-            // los 12s en vez de dejar el botón "pensando" para siempre.
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
-
             try {
-                const response = await fetch(this.SCRIPT_URL, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "text/plain;charset=utf-8",
-                    },
-                    body: JSON.stringify({
-                        action: "login_or_register",
-                        nombre: nombre,
-                        pin_acceso: pin
-                    }),
-                    signal: controller.signal
-                });
-
-                let data = null;
-                try {
-                    data = await response.json();
-                } catch (parseErr) {
-                    // Respuesta no-JSON o CORS bloqueó la lectura del body:
-                    // no podemos confirmar el PIN, se lo hacemos saber al
-                    // usuario en vez de dejarlo pasar a ciegas.
-                    console.warn('[PAES Sync] No se pudo leer la respuesta de Apps Script.', parseErr);
-                    return { ok: false, mensaje: 'No se pudo verificar tu apodo y PIN. Revisa tu conexión e intenta de nuevo.' };
-                }
+                const url = `${this.SCRIPT_URL}?action=login_or_register&nombre=${encodeURIComponent(nombre)}&pin_acceso=${encodeURIComponent(pin)}`;
+                const response = await fetch(url, { method: 'GET', signal: controller.signal });
+                const data = await response.json();
 
                 if (!data || data.status !== 'success') {
                     return { ok: false, mensaje: (data && data.message) || 'PIN incorrecto para ese apodo.' };
                 }
 
-                console.log("Registro/Autenticación procesado correctamente en Sheets.");
                 return { ok: true, idUsuario: data.id_usuario };
             } catch (error) {
                 if (error.name === 'AbortError') {
-                    console.error("Tiempo de espera agotado al conectar con BD_Usuarios.");
                     return { ok: false, mensaje: 'El servidor tardó demasiado en responder. Intenta de nuevo.' };
                 }
                 console.error("Error al conectar con BD_Usuarios:", error);
@@ -409,29 +379,38 @@ const PAESApp = (() => {
             }
         },
 
-        // 2. Enviar Puntaje a BD_Lideres al terminar una partida
+        // 2. Guardar puntaje vía GET — igual que login_or_register, se
+        // evita el POST porque no llega de forma confiable en redes móviles
+        // inestables. Requiere la acción "save_score" en doGet() (ver
+        // apps-script-doGet-nueva-accion.gs).
         async guardarPuntaje(materia, puntaje, racha) {
             const nombre = Storage.getRaw('usuario_nombre', '');
             if (!nombre) return;
             const idUsuario = Storage.getRaw('usuario_id', '');
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
             try {
-                await fetch(this.SCRIPT_URL, {
-                    method: "POST",
-                    mode: "no-cors",
-                    headers: {
-                        "Content-Type": "text/plain;charset=utf-8",
-                    },
-                    body: JSON.stringify({
-                        action: "save_score",
-                        id_usuario: idUsuario || undefined,
-                        nombre: nombre,
-                        materia: materia || "General",
-                        puntaje_maximo: puntaje || 0,
-                        racha_maxima: racha || 0,
-                        fecha: new Date().toISOString().split('T')[0]
-                    })
+                const params = new URLSearchParams({
+                    action: 'save_score',
+                    id_usuario: idUsuario || 'ANONIMO',
+                    nombre: nombre,
+                    materia: materia || 'General',
+                    puntaje_maximo: String(puntaje || 0),
+                    racha_maxima: String(racha || 0),
+                    fecha: new Date().toISOString().split('T')[0]
                 });
+
+                const response = await fetch(`${this.SCRIPT_URL}?${params.toString()}`, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                const data = await response.json();
+
+                if (!data || data.status !== 'success') {
+                    throw new Error((data && data.message) || 'Respuesta de error al guardar puntaje.');
+                }
                 console.log("Puntaje guardado con éxito en BD_Lideres.");
             } catch (error) {
                 console.error("Error al registrar el puntaje en BD_Lideres:", error);
@@ -443,6 +422,8 @@ const PAESApp = (() => {
                     puntaje_maximo: puntaje || 0,
                     racha_maxima: racha || 0
                 });
+            } finally {
+                clearTimeout(timeoutId);
             }
         }
     };
