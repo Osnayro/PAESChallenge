@@ -1,10 +1,10 @@
 /**
- * PAES Challenge Engine v4.5.0 (Production-Ready)
- * 
+ * PAES Challenge Engine v4.6.0 (Production-Ready)
+ *
  * Módulos integrados:
  * - State Management con suscripciones inmutables
  * - Highlighting seguro vía DOM Range API & TreeWalker
- * - Onboarding Exprés sin barreras de entrada
+ * - Modal de Registro/Login (Nickname + PIN) con validación real de servidor
  * - Sistema de Racha y Escudo Anti-Frustración
  * - Persistencia robusta en LocalStorage + Cola Offline
  */
@@ -28,8 +28,30 @@ const PAESApp = (() => {
         set(key, value) {
             try {
                 localStorage.setItem(key, JSON.stringify(value));
+                return true;
             } catch (e) {
                 console.error(`[PAES Storage] Error guardando clave "${key}":`, e);
+                return false;
+            }
+        },
+        // Variante para strings simples (no serializados en JSON), usada por
+        // el flujo de nickname/PIN para mantener compatibilidad con el valor
+        // plano que espera Google Apps Script.
+        getRaw(key, fallback = null) {
+            try {
+                return localStorage.getItem(key) ?? fallback;
+            } catch (e) {
+                console.warn(`[PAES Storage] Error leyendo clave "${key}":`, e);
+                return fallback;
+            }
+        },
+        setRaw(key, value) {
+            try {
+                localStorage.setItem(key, value);
+                return true;
+            } catch (e) {
+                console.error(`[PAES Storage] Error guardando clave "${key}":`, e);
+                return false;
             }
         }
     };
@@ -58,7 +80,7 @@ const PAESApp = (() => {
         updateState(key, value) {
             if (_state[key] === value) return;
             _state = { ..._state, [key]: value };
-            
+
             // Notificar a todos los suscriptores de UI
             _listeners.forEach(listener => listener(_state, key));
         },
@@ -104,7 +126,7 @@ const PAESApp = (() => {
 
                         const span = document.createElement('span');
                         span.className = claseCss;
-                        
+
                         range.surroundContents(span);
                         span.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         return true;
@@ -127,7 +149,7 @@ const PAESApp = (() => {
             if (esCorrecta) {
                 const nuevaRacha = state.streak + 1;
                 const puntosGanados = 50 + (nuevaRacha * 10);
-                
+
                 Engine.updateState('streak', nuevaRacha);
                 Engine.updateState('score', state.score + puntosGanados);
 
@@ -154,63 +176,105 @@ const PAESApp = (() => {
     };
 
     // ==========================================
-    // 5. ONBOARDING Y CAPTURA DE USUARIO
+    // 5. MODAL DE REGISTRO / AUTENTICACIÓN (NICKNAME + PIN)
     // ==========================================
-    const Onboarding = {
+    // Único punto de verdad para mostrar/ocultar el modal: usa la clase
+    // .active (ver styles.css). Nunca depende de la ausencia de un estilo
+    // inline, para que el estado sea siempre explícito y depurable.
+    const NicknameModal = {
+        modalEl: null,
+        formEl: null,
+        nicknameFieldEl: null,
+        pinFieldEl: null,
+        errorMsgEl: null,
+        submitBtnEl: null,
+
         init() {
-            const nombreGuardado = Storage.get('paes_jugador_nombre', '');
-            if (nombreGuardado) {
-                Engine.updateState('playerName', nombreGuardado);
+            this.modalEl = document.getElementById('nickname-modal');
+            this.formEl = document.getElementById('nickname-form');
+            this.nicknameFieldEl = document.getElementById('nickname-field');
+            this.pinFieldEl = document.getElementById('pin-field');
+            this.errorMsgEl = document.getElementById('nickname-error-msg');
+            this.submitBtnEl = document.getElementById('btn-save-nickname');
+
+            if (!this.modalEl) {
+                console.warn('[PAES Modal] #nickname-modal no existe en el DOM.');
                 return;
             }
-            this.renderizarModal();
+
+            const savedName = Storage.getRaw('usuario_nombre', '');
+            if (savedName) {
+                this.hide();
+                Engine.updateState('playerName', savedName);
+            } else {
+                this.show();
+            }
+
+            if (this.formEl) {
+                this.formEl.addEventListener('submit', (event) => this.handleSubmit(event));
+            }
         },
 
-        renderizarModal() {
-            const nickSugeridos = ['Aspirante2026', 'MentePAES', 'LectorPro', 'SabioPAES'];
-            const nickRandom = nickSugeridos[Math.floor(Math.random() * nickSugeridos.length)];
+        show() {
+            if (this.modalEl) this.modalEl.classList.add('active');
+        },
 
-            const overlay = document.createElement('div');
-            overlay.id = 'paes-onboarding-modal';
-            overlay.style.cssText = `
-                position: fixed; inset: 0; background: rgba(15,23,42,0.85); 
-                z-index: 9999; display: flex; align-items: center; justify-content: center; 
-                padding: 20px; font-family: system-ui, -apple-system, sans-serif; backdrop-filter: blur(6px);
-            `;
+        hide() {
+            if (this.modalEl) this.modalEl.classList.remove('active');
+        },
 
-            overlay.innerHTML = `
-                <div style="background:#ffffff; padding:32px 24px; border-radius:24px; max-width:360px; width:100%; text-align:center; box-shadow:0 25px 50px -12px rgba(0,0,0,0.35);">
-                    <div style="font-size:3.5rem; margin-bottom:12px; line-height:1;">🦉</div>
-                    <h2 style="font-size:1.4rem; font-weight:800; color:#0F172A; margin:0 0 8px 0;">Desafío PAES</h2>
-                    <p style="font-size:0.875rem; color:#64748B; margin:0 0 20px 0;">Elige un apodo para iniciar tu racha de aprendizaje:</p>
-                    
-                    <input id="paes-nick-input" type="text" maxlength="15" value="${nickRandom}" 
-                           style="width:100%; padding:14px; border-radius:14px; border:2px solid #8B5CF6; text-align:center; font-weight:700; font-size:1.05rem; color:#0F172A; outline:none; margin-bottom:16px; box-sizing:border-box;">
-                    
-                    <button id="paes-btn-start" 
-                            style="width:100%; padding:16px; border-radius:14px; border:none; background:linear-gradient(135deg,#8B5CF6,#6D28D9); color:#ffffff; font-weight:800; font-size:1rem; cursor:pointer; box-shadow:0 10px 20px -5px rgba(139,92,246,0.5); transition:transform 0.1s ease;">
-                        ¡Ingresar al Desafío! 🚀
-                    </button>
-                </div>
-            `;
+        setError(mensaje) {
+            if (!this.errorMsgEl) return;
+            if (mensaje) this.errorMsgEl.textContent = mensaje;
+            this.errorMsgEl.classList.add('active');
+            [this.nicknameFieldEl, this.pinFieldEl].forEach(el => el && el.classList.add('input-error'));
+        },
 
-            document.body.appendChild(overlay);
+        clearError() {
+            if (!this.errorMsgEl) return;
+            this.errorMsgEl.classList.remove('active');
+            [this.nicknameFieldEl, this.pinFieldEl].forEach(el => el && el.classList.remove('input-error'));
+        },
 
-            const input = document.getElementById('paes-nick-input');
-            const btn = document.getElementById('paes-btn-start');
+        setLoading(isLoading) {
+            if (!this.submitBtnEl) return;
+            this.submitBtnEl.disabled = isLoading;
+            this.submitBtnEl.textContent = isLoading ? 'Verificando... ⏳' : 'Comenzar a Jugar 🚀';
+        },
 
-            btn.addEventListener('click', () => {
-                const nombre = input.value.trim() || nickRandom;
-                Storage.set('paes_jugador_nombre', nombre);
-                Engine.updateState('playerName', nombre);
+        async handleSubmit(event) {
+            event.preventDefault();
 
-                // Bonificación inicial de retención
-                const currentScore = Engine.getState().score;
-                Engine.updateState('score', currentScore + 100);
+            const nombre = (this.nicknameFieldEl?.value || '').trim();
+            const pin = (this.pinFieldEl?.value || '').trim();
 
-                overlay.remove();
-                GameLogic.notificarToast(`¡Bienvenido, ${nombre}! +100 PTS 🎁`, '🎉');
-            });
+            if (!nombre || pin.length !== 4 || isNaN(pin)) {
+                this.setError('Por favor ingresa un nombre válido y un PIN de 4 dígitos.');
+                return;
+            }
+
+            this.clearError();
+            this.setLoading(true);
+
+            // Espera la confirmación real del servidor antes de dar por
+            // válido el registro/login. Si el servidor rechaza el PIN
+            // (nombre ya registrado con otro PIN), el modal permanece
+            // visible y se informa al usuario en vez de dejarlo entrar.
+            const resultado = await GoogleSheetsSync.registrarOAutenticarUsuario(nombre, pin);
+
+            this.setLoading(false);
+
+            if (!resultado.ok) {
+                this.setError(resultado.mensaje || 'No se pudo verificar tu apodo y PIN. Intenta de nuevo.');
+                return;
+            }
+
+            Storage.setRaw('usuario_nombre', nombre);
+            Storage.setRaw('usuario_pin', pin);
+            Engine.updateState('playerName', nombre);
+            this.hide();
+
+            GameLogic.notificarToast(`¡Bienvenido, ${nombre}! 🎉`, '🎉');
         }
     };
 
@@ -226,7 +290,7 @@ const PAESApp = (() => {
 
             // Procesamiento en bloque
             console.log(`[PAES Sync] Sincronizando ${queue.length} registros pendientes...`);
-            
+
             // Simulación de envío exitoso a backend/Google Sheets
             Storage.set('paes_pending_queue', []);
         },
@@ -242,13 +306,7 @@ const PAESApp = (() => {
     // 7. INICIALIZADOR GLOBAL
     // ==========================================
     function init() {
-        // Verificar usuario guardado (nuevo modal de registro con PIN)
-        const savedName = localStorage.getItem('usuario_nombre');
-        const modal = document.getElementById('nickname-modal');
-        if (savedName && modal) {
-            modal.style.display = 'none';
-            Engine.updateState('playerName', savedName);
-        }
+        NicknameModal.init();
 
         // Enlazar eventos de red
         window.addEventListener('online', () => SyncService.flushPendingData());
@@ -281,112 +339,110 @@ const PAESApp = (() => {
         init();
     }
 
+    // ==========================================
+    // 8. CONEXIÓN CON GOOGLE SHEETS (APPS SCRIPT)
+    // ==========================================
+    const GoogleSheetsSync = {
+        // URL del despliegue de Apps Script
+        SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwZkLrIZ-bo4nJfJQ3r5lTa8orrmYWNVr6joi0Ng-c8SwDyU_bqzc4zxffcB1Phn7-ncA/exec",
+
+        // 1. Enviar Usuario y PIN a BD_Usuarios y esperar confirmación real.
+        //
+        // IMPORTANTE: para que esto valide el PIN de verdad, el Apps Script
+        // debe responder con un JSON legible (p. ej. {"ok": true} o
+        // {"ok": false, "mensaje": "PIN incorrecto"}) y debe tener CORS
+        // habilitado. Mientras el fetch use mode:"no-cors" la respuesta es
+        // opaca y no se puede leer, así que aquí se asume éxito si la
+        // petición no lanza error de red. Actualiza SCRIPT_URL y el modo de
+        // fetch en tu despliegue de Apps Script para validación estricta.
+        async registrarOAutenticarUsuario(nombre, pin) {
+            try {
+                const response = await fetch(this.SCRIPT_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        action: "login_or_register",
+                        nombre: nombre,
+                        pin_acceso: pin
+                    })
+                });
+
+                // Si el Apps Script responde con CORS habilitado, se puede
+                // leer el resultado real de la validación del PIN.
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (parseErr) {
+                    // Respuesta no-JSON u opaca (no-cors): se asume éxito
+                    // si al menos la petición de red no falló.
+                    console.warn('[PAES Sync] No se pudo leer la respuesta de Apps Script; asumiendo éxito de red.', parseErr);
+                    return { ok: true };
+                }
+
+                if (data && data.ok === false) {
+                    return { ok: false, mensaje: data.mensaje || 'PIN incorrecto para ese apodo.' };
+                }
+
+                console.log("Registro/Autenticación procesado correctamente en Sheets.");
+                return { ok: true };
+            } catch (error) {
+                console.error("Error al conectar con BD_Usuarios:", error);
+                return { ok: false, mensaje: 'No hay conexión con el servidor. Intenta de nuevo.' };
+            }
+        },
+
+        // 2. Enviar Puntaje a BD_Lideres al terminar una partida
+        async guardarPuntaje(materia, puntaje, racha) {
+            const nombre = Storage.getRaw('usuario_nombre', '');
+            if (!nombre) return;
+
+            try {
+                await fetch(this.SCRIPT_URL, {
+                    method: "POST",
+                    mode: "no-cors",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        action: "save_score",
+                        nombre: nombre,
+                        materia: materia || "General",
+                        puntaje_maximo: puntaje || 0,
+                        racha_maxima: racha || 0,
+                        fecha: new Date().toISOString().split('T')[0]
+                    })
+                });
+                console.log("Puntaje guardado con éxito en BD_Lideres.");
+            } catch (error) {
+                console.error("Error al registrar el puntaje en BD_Lideres:", error);
+                // Si falla la red, se encola para reintentar cuando vuelva la conexión.
+                SyncService.registrarEventoOffline({
+                    action: 'save_score',
+                    nombre,
+                    materia: materia || 'General',
+                    puntaje_maximo: puntaje || 0,
+                    racha_maxima: racha || 0
+                });
+            }
+        }
+    };
+
     // API pública expuesta
     return {
         getState: Engine.getState,
         procesarRespuesta: GameLogic.procesarRespuesta.bind(GameLogic),
         resaltarTexto: DOMUtils.resaltarEvidenciaSegura,
         reset: Engine.reset,
-        setPlayerName: (name) => Engine.updateState('playerName', name)
+        setPlayerName: (name) => Engine.updateState('playerName', name),
+        guardarPuntaje: (materia, puntaje, racha) => GoogleSheetsSync.guardarPuntaje(materia, puntaje, racha)
     };
 })();
 
-// ================================================================
-// 8. CONEXIÓN CON GOOGLE SHEETS (APPS SCRIPT)
-// ================================================================
-
-// URL del despliegue activo de Apps Script
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwZkLrIZ-bo4nJfJQ3r5lTa8orrmYWNVr6joi0Ng-c8SwDyU_bqzc4zxffcB1Phn7-ncA/exec";
-
-// Manejar el formulario de registro/login
-async function handleUserRegistration(event) {
-    event.preventDefault();
-    
-    const nombre = document.getElementById("nickname-field").value.trim();
-    const pin = document.getElementById("pin-field").value.trim();
-    const errorMsg = document.getElementById("nickname-error-msg");
-
-    if (!nombre || pin.length !== 4 || isNaN(pin)) {
-        errorMsg.textContent = "Por favor ingresa un nombre válido y un PIN de 4 dígitos.";
-        errorMsg.classList.add("active");
-        return;
-    }
-
-    errorMsg.classList.remove("active");
-
-    // Guardar credenciales en el navegador
-    localStorage.setItem("usuario_nombre", nombre);
-    localStorage.setItem("usuario_pin", pin);
-
-    // Actualizar el estado global de PAESApp
-    if (typeof PAESApp !== 'undefined' && PAESApp.setPlayerName) {
-        PAESApp.setPlayerName(nombre);
-    }
-
-    // Ocultar modal
-    const modal = document.getElementById("nickname-modal");
-    if (modal) modal.style.display = "none";
-
-    // Enviar datos al endpoint en Google Sheets (BD_Usuarios)
-    await registrarOAutenticarUsuario(nombre, pin);
+// Wrapper global de compatibilidad: otros scripts (banco-*.js, effects.js)
+// pueden seguir llamando a guardarPuntaje(...) como función global, igual
+// que en versiones anteriores.
+function guardarPuntaje(materia, puntaje, racha) {
+    return PAESApp.guardarPuntaje(materia, puntaje, racha);
 }
-
-// 1. Enviar Usuario y PIN a BD_Usuarios
-async function registrarOAutenticarUsuario(nombre, pin) {
-    try {
-        await fetch(SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors",
-            headers: {
-                "Content-Type": "text/plain;charset=utf-8",
-            },
-            body: JSON.stringify({
-                action: "login_or_register",
-                nombre: nombre,
-                pin_acceso: pin
-            })
-        });
-        console.log("Registro/Autenticación procesado correctamente en Sheets.");
-        return true;
-    } catch (error) {
-        console.error("Error al conectar con BD_Usuarios:", error);
-        return false;
-    }
-}
-
-// 2. Enviar Puntaje a BD_Lideres al terminar una partida
-async function guardarPuntaje(materia, puntaje, racha) {
-    const nombre = localStorage.getItem("usuario_nombre");
-    if (!nombre) return;
-
-    try {
-        await fetch(SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors",
-            headers: {
-                "Content-Type": "text/plain;charset=utf-8",
-            },
-            body: JSON.stringify({
-                action: "save_score",
-                nombre: nombre,
-                materia: materia || "General",
-                puntaje_maximo: puntaje || 0,
-                racha_maxima: racha || 0,
-                fecha: new Date().toISOString().split('T')[0]
-            })
-        });
-        console.log("Puntaje guardado con éxito en BD_Lideres.");
-    } catch (error) {
-        console.error("Error al registrar el puntaje en BD_Lideres:", error);
-    }
-}
-
-// Comprobación inicial: ocultar el modal si ya existe un usuario guardado previamente
-document.addEventListener("DOMContentLoaded", () => {
-    const savedName = localStorage.getItem("usuario_nombre");
-    const modal = document.getElementById("nickname-modal");
-    
-    if (savedName && modal) {
-        modal.style.display = "none";
-    }
-});
